@@ -5,7 +5,6 @@ import Layout from './components/Layout';
 import DashboardPage from './pages/DashboardPage';
 import FeatureFlagsPage from './pages/FeatureFlagsPage';
 import HomePage from './pages/HomePage';
-import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ProfilePage from './pages/ProfilePage';
 import SubscriptionPage from './pages/SubscriptionPage';
@@ -27,13 +26,12 @@ function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
 
         <Route
           path="/dashboard"
           element={(
-            <ProtectedRoute redirectTo="/login">
+            <ProtectedRoute>
               <DashboardPage />
             </ProtectedRoute>
           )}
@@ -42,7 +40,7 @@ function App() {
         <Route
           path="/profile"
           element={(
-            <ProtectedRoute redirectTo="/login">
+            <ProtectedRoute>
               <ProfilePage />
             </ProtectedRoute>
           )}
@@ -51,7 +49,7 @@ function App() {
         <Route
           path="/feature-flags"
           element={(
-            <ProtectedRoute redirectTo="/login">
+            <ProtectedRoute>
               <FeatureFlagsPage />
             </ProtectedRoute>
           )}
@@ -60,7 +58,7 @@ function App() {
         <Route
           path="/team"
           element={(
-            <ProtectedRoute redirectTo="/login">
+            <ProtectedRoute>
               <TeamPage />
             </ProtectedRoute>
           )}
@@ -69,7 +67,7 @@ function App() {
         <Route
           path="/subscription"
           element={(
-            <ProtectedRoute redirectTo="/login">
+            <ProtectedRoute>
               <SubscriptionPage />
             </ProtectedRoute>
           )}
@@ -78,7 +76,7 @@ function App() {
         <Route
           path="/token-status"
           element={(
-            <ProtectedRoute redirectTo="/login">
+            <ProtectedRoute>
               <TokenStatusPage />
             </ProtectedRoute>
           )}
