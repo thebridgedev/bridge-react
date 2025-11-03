@@ -86,10 +86,6 @@ function App() {
 }
 ```
 
-Notes:
-- `ProtectedRoute` auto-initiates the hosted login if the user is unauthenticated; no local `/login` route is required.
-- `CallbackHandler` reads `code`/`error`, exchanges the code, sets tokens, and redirects using `useBridgeConfig()` (`defaultRedirectRoute`, `loginRoute`). If you don’t have a local login page, set `loginRoute` to a public route like `'/'` for error redirects.
-
 ---
 
 ## That’s it!
