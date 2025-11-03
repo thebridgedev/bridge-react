@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../bridge-nextjs"
+		},
+		{
+			"path": "../../../../my-react-app"
 		}
 	],
 	"settings": {}

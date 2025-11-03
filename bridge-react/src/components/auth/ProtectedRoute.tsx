@@ -1,19 +1,13 @@
 import { ReactNode, useEffect } from 'react';
 import { useAuth } from '../../hooks/use-auth';
-import { getRouterAdapter } from '../../utils/router-adapter';
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  redirectTo?: string;
 }
 
 /**
  * A component that protects routes from unauthenticated access.
- * If the user is not authenticated, they will be redirected to the specified redirectTo path.
- * 
- * Uses the configured router adapter for navigation. By default, uses window.location.
- * For a better experience with React Router or other routers, configure a router adapter
- * using setRouterAdapter().
+ * If the user is not authenticated, it immediately initiates the hosted login flow.
  * 
  * @example Basic usage
  * ```tsx
@@ -42,19 +36,15 @@ interface ProtectedRouteProps {
  * }
  * ```
  */
-export function ProtectedRoute({ 
-  children, 
-  redirectTo = '/' 
-}: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading } = useAuth();
-  const router = getRouterAdapter();
+export function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { isAuthenticated, isLoading, login } = useAuth();
 
-  // Redirect to login if not authenticated
+  // Auto-initiate hosted login if not authenticated
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.navigate(redirectTo, { replace: true });
+      login();
     }
-  }, [isAuthenticated, isLoading, redirectTo, router]);
+  }, [isAuthenticated, isLoading, login]);
 
   // Show loading state while checking authentication
   if (isLoading) {
@@ -70,7 +60,7 @@ export function ProtectedRoute({
     );
   }
 
-  // If not authenticated, don't render anything (will redirect)
+  // If not authenticated, render nothing (login flow will start immediately)
   if (!isAuthenticated) {
     return null;
   }

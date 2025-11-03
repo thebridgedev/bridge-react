@@ -5,7 +5,6 @@ import Layout from './components/Layout';
 import DashboardPage from './pages/DashboardPage';
 import FeatureFlagsPage from './pages/FeatureFlagsPage';
 import HomePage from './pages/HomePage';
-import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ProfilePage from './pages/ProfilePage';
 import SubscriptionPage from './pages/SubscriptionPage';
@@ -27,59 +26,21 @@ function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
         <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
 
+        {/* Wrap all protected routes under one ProtectedRoute */}
         <Route
-          path="/dashboard"
+          path="/*"
           element={(
-            <ProtectedRoute redirectTo="/login">
-              <DashboardPage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/profile"
-          element={(
-            <ProtectedRoute redirectTo="/login">
-              <ProfilePage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/feature-flags"
-          element={(
-            <ProtectedRoute redirectTo="/login">
-              <FeatureFlagsPage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/team"
-          element={(
-            <ProtectedRoute redirectTo="/login">
-              <TeamPage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/subscription"
-          element={(
-            <ProtectedRoute redirectTo="/login">
-              <SubscriptionPage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/token-status"
-          element={(
-            <ProtectedRoute redirectTo="/login">
-              <TokenStatusPage />
+            <ProtectedRoute>
+              <Routes>
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/feature-flags" element={<FeatureFlagsPage />} />
+                <Route path="/team" element={<TeamPage />} />
+                <Route path="/subscription" element={<SubscriptionPage />} />
+                <Route path="/token-status" element={<TokenStatusPage />} />
+              </Routes>
             </ProtectedRoute>
           )}
         />
