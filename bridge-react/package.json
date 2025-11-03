@@ -1,6 +1,6 @@
 {
   "name": "@nebulr-group/bridge-react",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0",
   "description": "bridge integration for React applications",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",

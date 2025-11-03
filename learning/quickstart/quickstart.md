@@ -39,11 +39,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
 ## Step 3: Set up OAuth callback and protect your routes
 
-Use the built-in `CallbackHandler` for the `/auth/oauth-callback` route, and wrap your protected routes with `ProtectedRoute`. Add a `/login` route to start the login flow.
+Use the built-in `CallbackHandler` for the `/auth/oauth-callback` route, and wrap all protected routes in a single `ProtectedRoute`. The component auto-starts the hosted login flow; no local `/login` page is needed.
 
 ```tsx
 // src/App.tsx
-import { CallbackHandler, Login, ProtectedRoute, setRouterAdapter } from '@nebulr-group/bridge-react';
+import { CallbackHandler, ProtectedRoute, setRouterAdapter } from '@nebulr-group/bridge-react';
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 
@@ -64,17 +64,22 @@ function App() {
     <BrowserRouter>
       <RouterAdapterBinder />
       <Routes>
+        {/* Public routes */}
+        <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
+
+        {/* Protected subtree */}
         <Route
-          path="/"
+          path="/*"
           element={
-            <ProtectedRoute redirectTo="/login">
-              {/* Your protected component here */}
-              <div>Home</div>
+            <ProtectedRoute>
+              <Routes>
+                {/* Your protected routes */}
+                <Route path="/" element={<div>Home</div>} />
+                {/* <Route path="/dashboard" element={<Dashboard />} /> */}
+              </Routes>
             </ProtectedRoute>
           }
         />
-        <Route path="/login" element={<Login />} />
-        <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
       </Routes>
     </BrowserRouter>
   );
@@ -82,8 +87,8 @@ function App() {
 ```
 
 Notes:
-- `CallbackHandler` reads `code`/`error`, exchanges the code, sets tokens, and redirects using `useBridgeConfig()` (`defaultRedirectRoute`, `loginRoute`).
-- Configure `BridgeProvider` with `loginRoute` and `defaultRedirectRoute` so redirects work as expected.
+- `ProtectedRoute` auto-initiates the hosted login if the user is unauthenticated; no local `/login` route is required.
+- `CallbackHandler` reads `code`/`error`, exchanges the code, sets tokens, and redirects using `useBridgeConfig()` (`defaultRedirectRoute`, `loginRoute`). If you don’t have a local login page, set `loginRoute` to a public route like `'/'` for error redirects.
 
 ---
 

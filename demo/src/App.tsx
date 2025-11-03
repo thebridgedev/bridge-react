@@ -28,56 +28,19 @@ function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
 
+        {/* Wrap all protected routes under one ProtectedRoute */}
         <Route
-          path="/dashboard"
+          path="/*"
           element={(
             <ProtectedRoute>
-              <DashboardPage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/profile"
-          element={(
-            <ProtectedRoute>
-              <ProfilePage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/feature-flags"
-          element={(
-            <ProtectedRoute>
-              <FeatureFlagsPage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/team"
-          element={(
-            <ProtectedRoute>
-              <TeamPage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/subscription"
-          element={(
-            <ProtectedRoute>
-              <SubscriptionPage />
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route
-          path="/token-status"
-          element={(
-            <ProtectedRoute>
-              <TokenStatusPage />
+              <Routes>
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/feature-flags" element={<FeatureFlagsPage />} />
+                <Route path="/team" element={<TeamPage />} />
+                <Route path="/subscription" element={<SubscriptionPage />} />
+                <Route path="/token-status" element={<TokenStatusPage />} />
+              </Routes>
             </ProtectedRoute>
           )}
         />
