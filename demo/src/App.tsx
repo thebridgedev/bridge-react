@@ -1,8 +1,7 @@
-import { ProtectedRoute, setRouterAdapter } from '@nebulr-group/bridge-react';
+import { CallbackHandler, ProtectedRoute, setRouterAdapter } from '@nebulr-group/bridge-react';
 import { useEffect } from 'react';
 import { Route, Routes, useNavigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import CallbackPage from './pages/CallbackPage';
 import DashboardPage from './pages/DashboardPage';
 import FeatureFlagsPage from './pages/FeatureFlagsPage';
 import HomePage from './pages/HomePage';
@@ -29,7 +28,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/oauth-callback" element={<CallbackPage />} />
+        <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
 
         <Route
           path="/dashboard"

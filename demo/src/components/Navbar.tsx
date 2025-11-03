@@ -13,8 +13,8 @@ const navItems: NavItem[] = [
   { label: 'Dashboard', to: '/dashboard', requiresAuth: true },
   { label: 'Profile', to: '/profile', requiresAuth: true },
   { label: 'Feature Flags', to: '/feature-flags', requiresAuth: true },
-  { label: 'Team', to: '/team', requiresAuth: true },
-  { label: 'Subscription', to: '/subscription', requiresAuth: true },
+  // { label: 'Team', to: '/team', requiresAuth: true },
+  // { label: 'Subscription', to: '/subscription', requiresAuth: true },
   { label: 'Token Status', to: '/token-status', requiresAuth: true }
 ];
 

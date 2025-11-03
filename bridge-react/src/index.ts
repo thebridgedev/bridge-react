@@ -1,4 +1,5 @@
 // Components
+export { CallbackHandler } from './components/auth/CallbackHandler';
 export { Login } from './components/auth/Login';
 export { ProtectedRoute } from './components/auth/ProtectedRoute';
 export { TokenStatus } from './components/auth/TokenStatus';
