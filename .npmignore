@@ -1,0 +1,44 @@
+# Source files
+src/
+tsconfig.json
+rollup.config.js
+
+# Documentation
+*.md
+!README.md
+learning/
+DEMO_APP_PLAN.md
+DOCUMENTATION_SUMMARY.md
+IMPLEMENTATION_PLAN.md
+QUICK_REFERENCE.md
+
+# Development files
+node_modules/
+.git/
+.gitignore
+.npmignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Example apps
+example-app/
+

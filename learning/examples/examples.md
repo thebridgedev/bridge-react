@@ -1324,5 +1324,5 @@ This guide covers all major features of bridge-react:
 ✅ Configuration (env vars, props)  
 ✅ Advanced usage (monitoring, error handling)
 
-For more examples, check out the [demo application](../../example-app/).
+For more examples, check out the [demo application](../../demo/).
 

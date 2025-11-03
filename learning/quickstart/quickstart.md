@@ -9,7 +9,7 @@ Get started with bridge authentication, feature flags, and team management in yo
 Install the bridge React plugin:
 
 ```bash
-npm install @nebulr-group/bridge-react
+bun add @nebulr-group/bridge-react
 ```
 
 ---
@@ -325,7 +325,7 @@ There is a lot more the bridge-react plugin can do. See [examples](../examples/e
 ## Next Steps
 
 - 📖 Read the [full examples guide](../examples/examples.md)
-- 🎨 Check out the [demo application](../../example-app/)
+- 🎨 Check out the [demo application](../../demo/)
 - 🔧 Learn about [router integration](../examples/examples.md#router-integration)
 - 🚦 Explore [feature flags](../examples/examples.md#feature-flags)
 - 👥 Set up [team management](../examples/examples.md#team-management)

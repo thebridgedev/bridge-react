@@ -1,0 +1,56 @@
+{
+  "name": "@nebulr-group/bridge-react",
+  "version": "0.1.0-beta.1",
+  "description": "bridge integration for React applications",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "license": "MIT",
+  "author": "Iman Pouya",
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thebridgedev/bridge-react"
+  },
+  "bugs": {
+    "url": "https://github.com/thebridgedev/bridge-react/issues"
+  },
+  "homepage": "https://thebridge.dev",
+  "scripts": {
+    "build": "rm -rf ./dist && rollup -c --bundleConfigAsCjs",
+    "build:watch": "rollup -c --bundleConfigAsCjs --watch",
+    "prepublishOnly": "bun run build",
+    "prepack": "bun run build && bun run copy-files",
+    "copy-files": "cp ../LICENSE ./LICENSE",
+    "publish-package": "bun run build && bun run copy-files && bunx npm publish --access public"
+  },
+  "keywords": [
+    "bridge",
+    "react",
+    "authentication",
+    "feature-flags",
+    "team-management"
+  ],
+  "peerDependencies": {
+    "react": "^16.0.0 || ^17.0.0 || ^18.0.0",
+    "react-dom": "^16.0.0 || ^17.0.0 || ^18.0.0"
+  },
+  "dependencies": {
+    "jose": "^6.0.10",
+    "jwt-decode": "^4.0.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/node": "^24.9.2",
+    "@types/react": "^18.2.0",
+    "rollup": "^4.14.1",
+    "tslib": "^2.6.2",
+    "typescript": "^5.4.0"
+  }
+}

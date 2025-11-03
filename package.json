@@ -1,0 +1,24 @@
+{
+  "name": "bridge-react-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "author": "Iman Pouya",
+  "workspaces": [
+    "bridge-react",
+    "demo"
+  ],
+  "scripts": {
+    "dev": "concurrently \"bun run --filter @nebulr-group/bridge-react build:watch\" \"bun run --filter demo dev\"",
+    "build": "bun run --filter @nebulr-group/bridge-react build",
+    "build:watch": "bun run --filter @nebulr-group/bridge-react build:watch",
+    "lint": "bun run --filter demo lint",
+    "clean": "rm -rf bridge-react/dist demo/dist",
+    "package": "bun run --filter @nebulr-group/bridge-react prepack && cd bridge-react && bun pm pack --destination ../"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "packageManager": "bun@1.1.22"
+}
+

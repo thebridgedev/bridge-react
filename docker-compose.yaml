@@ -1,0 +1,21 @@
+services:
+  bridge-react:
+    container_name: bridge-react
+    image: bridge-react:dev
+    build:
+      target: dev
+      context: ./
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./:/home/appuser/
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    ports:
+      - "5173:5173"
+    networks:
+      - bridge
+
+networks:
+  bridge:
+    driver: bridge
