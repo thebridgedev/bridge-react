@@ -4,19 +4,27 @@
   "private": true,
   "license": "MIT",
   "author": "Iman Pouya",
-  "workspaces": [
-    "bridge-react",
-    "demo"
-  ],
+  "workspaces": ["bridge-react", "demo"],
   "scripts": {
     "dev": "bun run --filter demo dev",
     "build": "bun run --filter @nebulr-group/bridge-react build",
     "build:watch": "bun run --filter @nebulr-group/bridge-react build:watch",
     "lint": "bun run --filter demo lint",
     "clean": "rm -rf bridge-react/dist demo/dist",
-    "package": "bun run --filter @nebulr-group/bridge-react prepack && cd bridge-react && bun pm pack --destination ../"
+    "package": "bun run --filter @nebulr-group/bridge-react prepack && cd bridge-react && bun pm pack --destination ../",
+    "test:e2e": "rm -rf node_modules/.bun 2>/dev/null; bun run e2e/playwright/pre-setup.ts test.local && PLAYWRIGHT_PROJECT_NAME=local bunx playwright test --project=local",
+    "test:e2e:stage": "bun run e2e/playwright/pre-setup.ts test.stage && PLAYWRIGHT_PROJECT_NAME=stage bunx playwright test --project=stage",
+    "test:e2e:prod": "bun run e2e/playwright/pre-setup.ts test.prod && PLAYWRIGHT_PROJECT_NAME=prod bunx playwright test --project=prod",
+    "test:e2e:headed": "rm -rf node_modules/.bun 2>/dev/null; bun run e2e/playwright/pre-setup.ts test.local && PLAYWRIGHT_PROJECT_NAME=local PLAYWRIGHT_HEADED=true bunx playwright test --project=local",
+    "test:e2e:report": "bunx playwright show-report test-reports/playwright-report"
   },
-  "devDependencies": {},
-  "packageManager": "bun@1.1.22"
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "dotenv": "^16.0.0",
+    "tsx": "^4.19.0"
+  },
+  "packageManager": "bun@1.1.22",
+  "overrides": {
+    "esbuild": "0.27.3"
+  }
 }
-

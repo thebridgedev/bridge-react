@@ -1,12 +1,14 @@
-import { createContext, FC, ReactNode } from 'react';
+import { createContext, FC, ReactNode, useEffect } from 'react';
+import { setDebug } from '../utils/logger';
 import { BridgeConfig } from '../types/config';
 
 /**
  * Default configuration values for bridge
  */
 const DEFAULT_CONFIG: Partial<BridgeConfig> = {
-  authBaseUrl: 'https://auth.nblocks.cloud',
-  teamManagementUrl: 'https://backendless.nblocks.cloud/user-management-portal/users',
+  authBaseUrl: 'https://api.thebridge.dev/auth',
+  teamManagementUrl: 'https://api.thebridge.dev/cloud-views/user-management-portal/users',
+  cloudViewsUrl: 'https://api.thebridge.dev/cloud-views',
   defaultRedirectRoute: '/',
   loginRoute: '/login',
   debug: false
@@ -37,6 +39,7 @@ const getConfigFromEnv = (): Partial<BridgeConfig> => {
   const defaultRedirectRoute = getEnvVar('BRIDGE_DEFAULT_REDIRECT_ROUTE');
   const loginRoute = getEnvVar('BRIDGE_LOGIN_ROUTE');
   const teamManagementUrl = getEnvVar('BRIDGE_TEAM_MANAGEMENT_URL');
+  const cloudViewsUrl = getEnvVar('BRIDGE_CLOUD_VIEWS_URL');
   const debug = getEnvVar('BRIDGE_DEBUG');
 
   if (appId) envConfig.appId = appId;
@@ -45,6 +48,7 @@ const getConfigFromEnv = (): Partial<BridgeConfig> => {
   if (defaultRedirectRoute) envConfig.defaultRedirectRoute = defaultRedirectRoute;
   if (loginRoute) envConfig.loginRoute = loginRoute;
   if (teamManagementUrl) envConfig.teamManagementUrl = teamManagementUrl;
+  if (cloudViewsUrl) envConfig.cloudViewsUrl = cloudViewsUrl;
   if (debug !== undefined) envConfig.debug = debug === 'true';
 
   return envConfig;
@@ -92,6 +96,10 @@ export const BridgeConfigProvider: FC<BridgeConfigProviderProps> = ({ config, ch
     ...config,
     ...envConfig // Environment variables take highest priority
   } as BridgeConfig;
+
+  useEffect(() => {
+    setDebug(!!mergedConfig.debug);
+  }, [mergedConfig.debug]);
 
   return (
     <BridgeConfigContext.Provider value={mergedConfig}>

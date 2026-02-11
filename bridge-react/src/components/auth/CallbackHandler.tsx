@@ -40,6 +40,14 @@ export function CallbackHandler() {
       router.replace(buildUrl(path, query));
     };
 
+    // Preserve allowlisted query params on success redirect (e.g. payment from post-payment callback)
+    const preserveParams = ['payment'];
+    const preservedQuery: Record<string, string> = {};
+    preserveParams.forEach((name) => {
+      const value = params.get(name);
+      if (value != null) preservedQuery[name] = value;
+    });
+
     const process = async () => {
       try {
         if (callbackError) {
@@ -49,7 +57,7 @@ export function CallbackHandler() {
           return redirect(loginRoute!, { error: 'no_code' });
         }
         await handleCallback(code);
-        return redirect(successRoute!);
+        return redirect(successRoute!, Object.keys(preservedQuery).length > 0 ? preservedQuery : undefined);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'auth_failed';
         return redirect(loginRoute!, { error: message });

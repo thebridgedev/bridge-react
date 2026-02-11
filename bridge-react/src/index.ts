@@ -12,6 +12,7 @@ export { useAuth } from './hooks/use-auth';
 export { useBridgeConfig } from './hooks/use-bridge-config';
 export { useBridgeToken } from './hooks/use-bridge-token';
 export { default as useFeatureFlag } from './hooks/use-feature-flag';
+export { usePlanService } from './hooks/use-plan-service';
 export { useProfile } from './hooks/use-profile';
 export { useTeamManagement } from './hooks/use-team-management';
 
@@ -34,6 +35,7 @@ export { createReactRouterAdapter, createTanStackRouterAdapter, createWouterAdap
 export { AuthService } from './services/auth.service';
 export { getCachedFlags, isFeatureEnabled, loadFeatureFlags } from './services/feature-flag.service';
 export { ProfileService } from './services/profile.service';
+export { planService } from './services/plan.service';
 export { TeamManagementService } from './services/team-management.service';
 export { TokenService } from './services/token.service';
 
