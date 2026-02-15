@@ -1,12 +1,12 @@
 # Bridge React Quickstart Guide
 
-Get started with bridge authentication, feature flags, and team management in your React application.
+Get started with Bridge authentication, feature flags, and team management in your React application.
 
 ---
 
 ## Step 1: Installation
 
-Install the bridge React plugin:
+Install the Bridge React plugin:
 
 ```bash
 npm add @nebulr-group/bridge-react

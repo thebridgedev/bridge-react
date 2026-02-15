@@ -9,14 +9,14 @@
  * @example Environment Variables for Create React App
  * ```env
  * REACT_APP_BRIDGE_APP_ID=your-app-id
- * REACT_APP_BRIDGE_AUTH_BASE_URL=https://auth.nblocks.cloud
+ * REACT_APP_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
  * REACT_APP_BRIDGE_DEBUG=true
  * ```
  * 
  * @example Environment Variables for Vite
  * ```env
  * VITE_BRIDGE_APP_ID=your-app-id
- * VITE_BRIDGE_AUTH_BASE_URL=https://auth.nblocks.cloud
+ * VITE_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
  * VITE_BRIDGE_DEBUG=true
  * ```
  */
@@ -37,7 +37,7 @@ export interface BridgeConfig {
 
   /**
    * The base URL for bridge auth services
-   * @default 'https://auth.nblocks.cloud'
+   * @default 'https://api.thebridge.dev/auth'
    * @env REACT_APP_BRIDGE_AUTH_BASE_URL or VITE_BRIDGE_AUTH_BASE_URL
    */
   authBaseUrl?: string;
@@ -58,10 +58,17 @@ export interface BridgeConfig {
 
   /**
    * URL for the team management portal
-   * @default 'https://backendless.nblocks.cloud/user-management-portal/users'
+   * @default 'https://api.thebridge.dev/cloud-views/user-management-portal/users'
    * @env REACT_APP_BRIDGE_TEAM_MANAGEMENT_URL or VITE_BRIDGE_TEAM_MANAGEMENT_URL
    */
   teamManagementUrl?: string;
+
+  /**
+   * Base URL for bridge cloud-views service (feature flags, plan selection, payments, etc.)
+   * @default 'https://api.thebridge.dev/cloud-views'
+   * @env REACT_APP_BRIDGE_CLOUD_VIEWS_URL or VITE_BRIDGE_CLOUD_VIEWS_URL
+   */
+  cloudViewsUrl?: string;
 
   /**
    * Debug mode

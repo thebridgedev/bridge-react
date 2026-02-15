@@ -150,7 +150,7 @@ export class TokenService {
       if (!this.config) {
         throw new Error('TokenService not initialized - call init() first');
       }
-      const authBaseUrl = this.config.authBaseUrl || 'https://auth.nblocks.cloud';
+      const authBaseUrl = this.config.authBaseUrl || 'https://api.thebridge.dev/auth';
       const url = `${authBaseUrl}/token`;
 
       const response = await fetch(url, {

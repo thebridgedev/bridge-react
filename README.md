@@ -12,6 +12,7 @@ This repository contains the Bridge React library (`@nebulr-group/bridge-react`)
 - [Authentication](#authentication)
 - [Feature Flags](#feature-flags)
 - [Demo Application](#demo-application)
+- [E2E Tests](#e2e-tests)
 - [Publishing & Release](#publishing--release)
 - [Contributing](#contributing)
 - [License](#license)
@@ -55,29 +56,32 @@ You can also configure through environment variables (recommended):
 VITE_BRIDGE_APP_ID=your-app-id
 VITE_BRIDGE_CALLBACK_URL=http://localhost:5173/auth/oauth-callback
 VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE=/protected
-VITE_BRIDGE_AUTH_BASE_URL=https://auth.nblocks.cloud
-VITE_BRIDGE_TEAM_MANAGEMENT_URL=https://backendless.nblocks.cloud/user-management-portal/users
+VITE_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
+VITE_BRIDGE_TEAM_MANAGEMENT_URL=https://api.thebridge.dev/cloud-views/user-management-portal/users
+VITE_BRIDGE_CLOUD_VIEWS_URL=https://api.thebridge.dev/cloud-views
 VITE_BRIDGE_DEBUG=true
 
 # Create React App
 REACT_APP_BRIDGE_APP_ID=your-app-id
 REACT_APP_BRIDGE_CALLBACK_URL=http://localhost:3000/auth/oauth-callback
 REACT_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE=/protected
-REACT_APP_BRIDGE_AUTH_BASE_URL=https://auth.nblocks.cloud
-REACT_APP_BRIDGE_TEAM_MANAGEMENT_URL=https://backendless.nblocks.cloud/user-management-portal/users
+REACT_APP_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
+REACT_APP_BRIDGE_TEAM_MANAGEMENT_URL=https://api.thebridge.dev/cloud-views/user-management-portal/users
+REACT_APP_BRIDGE_CLOUD_VIEWS_URL=https://api.thebridge.dev/cloud-views
 REACT_APP_BRIDGE_DEBUG=true
 ```
 
 ### Essential Configuration
 - **appId** (required string): Your application ID from the Bridge dashboard.
-- **callbackUrl** (string): URL Bridge redirects to after authentication. Default: `origin + '/auth/callback'`.
+- **callbackUrl** (string): URL Bridge redirects to after authentication. Default: `origin + '/auth/oauth-callback'`.
 - **defaultRedirectRoute** (string): Route to redirect users after successful login. Default: `'/'`.
 - **debug** (boolean): Enable verbose SDK logs. Default: `false`.
 
 ### Advanced Configuration
-- **authBaseUrl** (string): Bridge auth service base URL. Default: `https://auth.nblocks.cloud`.
+- **authBaseUrl** (string): Bridge auth service base URL. Default: `https://api.thebridge.dev/auth`.
 - **loginRoute** (string): App login route used for unauthenticated redirects. Default: `'/login'`.
-- **teamManagementUrl** (string): Team management portal URL. Default: `https://backendless.nblocks.cloud/user-management-portal/users`.
+- **teamManagementUrl** (string): Team management portal URL. Default: `https://api.thebridge.dev/cloud-views/user-management-portal/users`.
+- **cloudViewsUrl** (string): Base URL for Bridge cloud-views (feature flags, plan selection, payments). Default: `https://api.thebridge.dev/cloud-views`.
 
 ## Authentication
 
@@ -116,7 +120,22 @@ The demo showcases:
 - Feature flags
 - Team management
 - Authentication flows
-- Integration patterns
+- Payment and subscription patterns
+- Integration examples
+
+## E2E Tests
+
+E2E tests use Playwright. Run them from the repo root.
+
+1. **Configure env:** Copy `config/.env.test.local.example` to `config/.env.test.local` and fill in the values (test data API key, etc.).
+2. **Pre-setup:** The first step of `test:e2e` runs a pre-setup script that creates/gets the test app and writes `VITE_BRIDGE_APP_ID` into `demo/.env.test.local` so the demo starts with the correct app.
+3. **Install browsers (once):** `bunx playwright install`
+4. **Run tests:**
+   - `bun run test:e2e` — local (starts demo on port 3001, runs Playwright)
+   - `bun run test:e2e:stage` — stage
+   - `bun run test:e2e:prod` — prod
+   - `bun run test:e2e:headed` — local with browser visible
+   - `bun run test:e2e:report` — open last HTML report
 
 ## Publishing & Release
 
@@ -135,7 +154,7 @@ git push origin v0.1.0
 
 ## Contributing
 
-Contributions are welcome. See CONTRIBUTING.md for guidelines.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 

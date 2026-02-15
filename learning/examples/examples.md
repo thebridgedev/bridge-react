@@ -1,6 +1,6 @@
-# bridge React Examples
+# Bridge React Examples
 
-Complete guide to using bridge in your React application.
+Complete guide to using Bridge in your React application.
 
 ---
 
@@ -45,11 +45,11 @@ Complete guide to using bridge in your React application.
 
 ## Router Integration
 
-bridge-react works with any React router or no router at all. Here's how to integrate with popular routers:
+Bridge React works with any React router or no router at all. Here's how to integrate with popular routers:
 
 ### Without a Router (Default)
 
-If you're not using a router, bridge will use `window.location` by default:
+If you're not using a router, Bridge will use `window.location` by default:
 
 ```tsx
 // src/App.tsx
@@ -1076,6 +1076,28 @@ function UpgradePage() {
 }
 ```
 
+Or use the `usePlanService` hook for a simple redirect to plan selection (handover protocol):
+
+```tsx
+import { usePlanService } from '@nebulr-group/bridge-react';
+
+function ManagePlanButton() {
+  const { redirectToPlanSelection } = usePlanService();
+
+  const handleClick = async () => {
+    try {
+      await redirectToPlanSelection();
+    } catch (error) {
+      console.error('Failed to redirect:', error);
+    }
+  };
+
+  return <button onClick={handleClick}>Manage plan</button>;
+}
+```
+
+You can also call `planService.redirectToPlanSelection(config, accessToken)` directly when you have config and token available.
+
 ---
 
 ## Configuration
@@ -1091,11 +1113,11 @@ Configure bridge using environment variables:
 REACT_APP_BRIDGE_APP_ID=your-app-id-here
 
 # Optional
-REACT_APP_BRIDGE_AUTH_BASE_URL=https://auth.nblocks.cloud
+REACT_APP_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
 REACT_APP_BRIDGE_CALLBACK_URL=/auth/oauth-callback
 REACT_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
 REACT_APP_BRIDGE_LOGIN_ROUTE=/login
-REACT_APP_BRIDGE_TEAM_MANAGEMENT_URL=https://backendless.nblocks.cloud/user-management-portal/users
+REACT_APP_BRIDGE_TEAM_MANAGEMENT_URL=https://api.thebridge.dev/cloud-views/user-management-portal/users
 REACT_APP_BRIDGE_DEBUG=false
 ```
 
@@ -1106,11 +1128,11 @@ REACT_APP_BRIDGE_DEBUG=false
 VITE_BRIDGE_APP_ID=your-app-id-here
 
 # Optional
-VITE_BRIDGE_AUTH_BASE_URL=https://auth.nblocks.cloud
+VITE_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
 VITE_BRIDGE_CALLBACK_URL=/auth/oauth-callback
 VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
 VITE_BRIDGE_LOGIN_ROUTE=/login
-VITE_BRIDGE_TEAM_MANAGEMENT_URL=https://backendless.nblocks.cloud/user-management-portal/users
+VITE_BRIDGE_TEAM_MANAGEMENT_URL=https://api.thebridge.dev/cloud-views/user-management-portal/users
 VITE_BRIDGE_DEBUG=false
 ```
 
@@ -1125,7 +1147,7 @@ function Root() {
   return (
     <BridgeProvider
       appId="your-app-id"
-      authBaseUrl="https://auth.nblocks.cloud"
+      authBaseUrl="https://api.thebridge.dev/auth"
       defaultRedirectRoute="/dashboard"
       loginRoute="/signin"
       debug={true}
@@ -1143,11 +1165,11 @@ import { BridgeProvider } from '@nebulr-group/bridge-react';
 
 const bridgeConfig = {
   appId: 'your-app-id',
-  authBaseUrl: 'https://auth.nblocks.cloud',
+  authBaseUrl: 'https://api.thebridge.dev/auth',
   callbackUrl: '/auth/callback',
   defaultRedirectRoute: '/dashboard',
   loginRoute: '/signin',
-  teamManagementUrl: 'https://backendless.nblocks.cloud/user-management-portal/users',
+  teamManagementUrl: 'https://api.thebridge.dev/cloud-views/user-management-portal/users',
   debug: process.env.NODE_ENV === 'development'
 };
 

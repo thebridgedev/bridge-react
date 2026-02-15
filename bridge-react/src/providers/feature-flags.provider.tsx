@@ -1,4 +1,5 @@
 import { createContext, FC, ReactNode, useContext, useEffect, useState } from 'react';
+import { logger } from '../utils/logger';
 import { useBridgeConfig } from '../hooks/use-bridge-config';
 import { useBridgeToken } from '../hooks/use-bridge-token';
 import { getCachedFlags, loadFeatureFlags } from '../services/feature-flag.service';
@@ -33,15 +34,15 @@ export const FeatureFlagsProvider: FC<FeatureFlagsProviderProps> = ({ children }
         }
 
         if (!config.appId) {
-          console.error('appId is required for feature flag loading');
+          logger.error('appId is required for feature flag loading');
           return;
         }
-        
-        await loadFeatureFlags(config.appId, accessToken);
+
+        await loadFeatureFlags(config.appId, accessToken, config.cloudViewsUrl);
         const updatedFlags = getCachedFlags();
         setFlags(updatedFlags);
       } catch (error) {
-        console.error('Failed to load feature flags:', error);
+        logger.error('Failed to load feature flags:', error);
       }
     };
 
@@ -60,15 +61,15 @@ export const FeatureFlagsProvider: FC<FeatureFlagsProviderProps> = ({ children }
       }
 
       if (!config.appId) {
-        console.error('appId is required for feature flag loading');
+        logger.error('appId is required for feature flag loading');
         return;
       }
-      
-      await loadFeatureFlags(config.appId, accessToken);
+
+      await loadFeatureFlags(config.appId, accessToken, config.cloudViewsUrl);
       const updatedFlags = getCachedFlags();
       setFlags(updatedFlags);
     } catch (error) {
-      console.error('Failed to refresh feature flags:', error);
+      logger.error('Failed to refresh feature flags:', error);
     }
   };
 

@@ -1,3 +1,4 @@
+import { logger } from '../utils/logger';
 import { BridgeConfig } from '../types/config';
 import { TokenService } from './token.service';
 
@@ -62,33 +63,37 @@ export class TeamManagementService {
       throw new Error('No access token available');
     }
 
-    const authBaseUrl = this.config.authBaseUrl || 'https://auth.nblocks.cloud';
+    const authBaseUrl = this.config.authBaseUrl || 'https://api.thebridge.dev/auth';
     const appId = this.config.appId;
-    
+
     if (!appId) {
       throw new Error('appId is required');
     }
 
-    const response = await fetch(
-      `${authBaseUrl}/handover/code/${appId}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ accessToken }),
-      }
-    );
+    const redirectUri =
+      this.config.callbackUrl ||
+      (typeof window !== 'undefined' ? `${window.location.origin}/auth/oauth-callback` : '');
+
+    const response = await fetch(`${authBaseUrl}/handover/code/${appId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        accessToken,
+        ...(redirectUri && { redirectUri }),
+      }),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Failed to get handover code: ${response.status} ${response.statusText}`, errorText);
+      logger.error(`Failed to get handover code: ${response.status} ${response.statusText}`, errorText);
       throw new Error(`Failed to get handover code: ${response.statusText}`);
     }
 
     const data = await response.json();
     if (!data.code) {
-      console.error('No handover code in response:', data);
+      logger.error('No handover code in response:', data);
       throw new Error('Failed to get handover code: No code in response');
     }
 
@@ -105,13 +110,13 @@ export class TeamManagementService {
 
     // Check if token is available
     if (!this.hasToken()) {
-      console.error('No access token available for team management');
+      logger.error('No access token available for team management');
       throw new Error('User must be authenticated to access team management');
     }
 
     try {
-      console.log('Config structure:', JSON.stringify(this.config, null, 2));
-      
+      logger.debug('Config structure:', JSON.stringify(this.config, null, 2));
+
       // Get handover code from bridge
       const code = await this.getHandoverCode();
 
@@ -119,10 +124,10 @@ export class TeamManagementService {
       const baseUrl = this.config.teamManagementUrl;
       const url = `${baseUrl}?code=${code}`;
 
-      console.log('Team management URL created successfully', url);
+      logger.debug('Team management URL created successfully', url);
       return url;
     } catch (error) {
-      console.error('Failed to get team management URL:', error);
+      logger.error('Failed to get team management URL:', error);
       throw new Error('Failed to initialize team management: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }
@@ -150,7 +155,7 @@ export class TeamManagementService {
 
     // Check if token is available
     if (!this.hasToken()) {
-      console.error('No access token available for subscription');
+      logger.error('No access token available for subscription');
       throw new Error('User must be authenticated to access subscription');
     }
 
@@ -158,15 +163,15 @@ export class TeamManagementService {
       // Get handover code from bridge
       const code = await this.getHandoverCode();
 
-      // Create the subscription URL with the handover code
-      // The base URL for subscription is different from team management
-      const baseUrl = 'https://backendless.nblocks.cloud/select-plan';
+      // Create the subscription URL with the handover code (cloud-views subscription portal)
+      const cloudViewsUrl = this.config.cloudViewsUrl || 'https://api.thebridge.dev/cloud-views';
+      const baseUrl = `${cloudViewsUrl}/subscription-portal/selectPlan`;
       const url = `${baseUrl}?code=${code}`;
 
-      console.log('Subscription URL created successfully', url);
+      logger.debug('Subscription URL created successfully', url);
       return url;
     } catch (error) {
-      console.error('Failed to get subscription URL:', error);
+      logger.error('Failed to get subscription URL:', error);
       throw new Error('Failed to initialize subscription: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   }
