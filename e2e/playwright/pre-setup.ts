@@ -18,7 +18,8 @@ const APP_URL = `http://localhost:${DEMO_PORT}`;
 
 async function preSetup() {
   const mode = process.argv[2] || 'test.local';
-  const envFile = path.resolve(rootDir, 'demo/.env.test.local');
+  const envFileName = mode === 'test.stage' ? '.env.test.stage' : mode === 'test.prod' ? '.env.test.prod' : '.env.test.local';
+  const envFile = path.resolve(rootDir, 'demo', envFileName);
 
   console.log('[pre-setup] Mode:', mode);
   console.log('[pre-setup] Demo env file:', envFile);
@@ -85,19 +86,43 @@ async function preSetup() {
     throw new Error(`Demo directory not found: ${demoDir}`);
   }
 
+  let authBaseUrl = '';
+  let callbackUrl = `${APP_URL}/auth/oauth-callback`;
+  if (mode === 'test.local') {
+    authBaseUrl = process.env.LOCAL_AUTH_BASE_URL || `${testDataApiUrl.replace(/\/$/, '')}/auth`;
+  } else if (mode === 'test.stage' && process.env.STAGE_AUTH_BASE_URL) {
+    authBaseUrl = process.env.STAGE_AUTH_BASE_URL;
+  } else if (mode === 'test.prod') {
+    authBaseUrl = ''; // prod uses plugin default
+  }
+
   let envContent: string;
   if (fs.existsSync(envFile)) {
     envContent = fs.readFileSync(envFile, 'utf-8');
-    envContent = envContent.replace(
-      /^VITE_BRIDGE_APP_ID=.*$/m,
-      `VITE_BRIDGE_APP_ID=${appId}`
-    );
+    envContent = envContent.replace(/^VITE_BRIDGE_APP_ID=.*$/m, `VITE_BRIDGE_APP_ID=${appId}`);
+    if (authBaseUrl) {
+      if (/^VITE_BRIDGE_AUTH_BASE_URL=/m.test(envContent)) {
+        envContent = envContent.replace(/^VITE_BRIDGE_AUTH_BASE_URL=.*$/m, `VITE_BRIDGE_AUTH_BASE_URL=${authBaseUrl}`);
+      } else {
+        envContent += `\nVITE_BRIDGE_AUTH_BASE_URL=${authBaseUrl}`;
+      }
+    }
+    if (callbackUrl) {
+      if (/^VITE_BRIDGE_CALLBACK_URL=/m.test(envContent)) {
+        envContent = envContent.replace(/^VITE_BRIDGE_CALLBACK_URL=.*$/m, `VITE_BRIDGE_CALLBACK_URL=${callbackUrl}`);
+      } else {
+        envContent += `\nVITE_BRIDGE_CALLBACK_URL=${callbackUrl}`;
+      }
+    }
   } else {
     envContent = `# E2E test env — written by pre-setup\nVITE_BRIDGE_APP_ID=${appId}\n`;
+    if (authBaseUrl) envContent += `VITE_BRIDGE_AUTH_BASE_URL=${authBaseUrl}\n`;
+    if (callbackUrl) envContent += `VITE_BRIDGE_CALLBACK_URL=${callbackUrl}\n`;
   }
 
   fs.writeFileSync(envFile, envContent);
-  console.log('[pre-setup] Updated', envFile, 'with VITE_BRIDGE_APP_ID');
+  const authNote = authBaseUrl ? `, auth + callback for ${mode}` : '';
+  console.log('[pre-setup] Updated', envFile, 'with VITE_BRIDGE_APP_ID' + authNote);
   console.log('[pre-setup] Done.\n');
 }
 

@@ -53,7 +53,9 @@ test.describe('Auth login and logout', () => {
     await logoutButton.click();
     await page.waitForLoadState('networkidle');
 
-    const loginLink = page.getByRole('link', { name: /Start authentication|Login/i });
-    await expect(loginLink.first()).toBeVisible({ timeout: MED_TIMEOUT });
+    // After logout: home shows link "Start authentication flow", or we're on /login with "Login with bridge" button
+    const loginLink = page.getByRole('link', { name: /Start authentication flow/i });
+    const loginButton = page.getByRole('button', { name: /Login with bridge/i });
+    await expect(loginLink.or(loginButton).first()).toBeVisible({ timeout: MED_TIMEOUT });
   });
 });
