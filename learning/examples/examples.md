@@ -1,6 +1,6 @@
-# bridge React Examples
+# Bridge React Examples
 
-Complete guide to using bridge in your React application.
+Complete guide to using Bridge in your React application.
 
 ---
 
@@ -45,11 +45,11 @@ Complete guide to using bridge in your React application.
 
 ## Router Integration
 
-bridge-react works with any React router or no router at all. Here's how to integrate with popular routers:
+Bridge React works with any React router or no router at all. Here's how to integrate with popular routers:
 
 ### Without a Router (Default)
 
-If you're not using a router, bridge will use `window.location` by default:
+If you're not using a router, Bridge will use `window.location` by default:
 
 ```tsx
 // src/App.tsx

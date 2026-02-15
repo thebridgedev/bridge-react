@@ -73,7 +73,7 @@ REACT_APP_BRIDGE_DEBUG=true
 
 ### Essential Configuration
 - **appId** (required string): Your application ID from the Bridge dashboard.
-- **callbackUrl** (string): URL Bridge redirects to after authentication. Default: `origin + '/auth/callback'`.
+- **callbackUrl** (string): URL Bridge redirects to after authentication. Default: `origin + '/auth/oauth-callback'`.
 - **defaultRedirectRoute** (string): Route to redirect users after successful login. Default: `'/'`.
 - **debug** (boolean): Enable verbose SDK logs. Default: `false`.
 
