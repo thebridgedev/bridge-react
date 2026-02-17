@@ -1,0 +1,40 @@
+# Test that the packed package installs cleanly with React 18 and React 19
+name: Test install
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  install-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        react-version: ['18', '19']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Build and pack package
+        run: |
+          bun install
+          bun run build
+          bun run package
+          mv nebulr-group-bridge-react-*.tgz install-test-pkg.tgz
+
+      - name: Install with React ${{ matrix.react-version }}
+        run: |
+          mkdir -p install-test
+          cd install-test
+          npm init -y
+          npm install react@^${{ matrix.react-version }} react-dom@^${{ matrix.react-version }}
+          npm install ../install-test-pkg.tgz
+          echo "Install with react@${{ matrix.react-version }} succeeded"
