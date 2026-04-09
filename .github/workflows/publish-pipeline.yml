@@ -23,7 +23,6 @@ jobs:
       install-command: bun install
       build-command: bun run build
     secrets:
-      npm-token: ${{ secrets.NPM_TOKEN }}
       docs-sync-key: ${{ secrets.DOCS_SYNC_KEY }}
 
 
