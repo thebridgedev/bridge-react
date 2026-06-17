@@ -4,11 +4,19 @@ let debugEnabled = false;
 
 /**
  * Set whether debug logging is enabled (e.g. from config.debug).
- * Call when config is available (e.g. in BridgeConfigProvider).
+ * Call when config is available (e.g. in BridgeProvider).
  */
 export function setDebug(enabled: boolean): void {
   debugEnabled = enabled;
 }
+
+/**
+ * Set whether debug logging is enabled (driven by config.debug).
+ *
+ * Public name matches bridge-svelte / bridge-nextjs (`setLoggerDebug`) so feature
+ * ports translate 1:1. Alias of {@link setDebug}.
+ */
+export const setLoggerDebug = setDebug;
 
 function createPrefixed(method: LogMethod, prefix: string): LogMethod {
   return (...args: unknown[]) => method(prefix, ...args);

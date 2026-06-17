@@ -1,12 +1,12 @@
-import { Team } from '@nebulr-group/bridge-react';
+import { TeamManagementPanel } from '@nebulr-group/bridge-react';
 
 function TeamPage() {
   return (
     <div className="page-section">
       <h1 className="page-heading">Team management</h1>
       <p className="page-subheading">
-        The <code>&lt;Team /&gt;</code> component embeds the hosted portal. We wrap it in a responsive container so it
-        fills the viewport.
+        The <code>&lt;TeamManagementPanel /&gt;</code> component renders team UI natively in-app
+        (no iframe, direct GraphQL via auth-core's <code>TeamService</code>).
       </p>
 
       <div className="card">
@@ -14,18 +14,20 @@ function TeamPage() {
         <ul className="list">
           <li>Tokens must be present in storage — log in first.</li>
           <li>
-            If you prefer a new window, call <code>TeamManagementService.launchTeamManagement()</code> instead.
+            Use the <code>tabBar</code> render prop to fully customize the tab navigation.
           </li>
-          <li>Set <code>VITE_BRIDGE_TEAM_MANAGEMENT_URL</code> to override the default portal.</li>
+          <li>
+            See <code>/team-panel</code> for a custom-tabbed example and <code>/workspaces</code> for
+            workspace switching.
+          </li>
         </ul>
       </div>
 
       <div className="team-container">
-        <Team />
+        <TeamManagementPanel onError={(err) => console.error('[Team]', err)} />
       </div>
     </div>
   );
 }
 
 export default TeamPage;
-

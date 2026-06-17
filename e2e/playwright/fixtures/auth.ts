@@ -50,7 +50,8 @@ export const test = base.extend<AuthFixtures>({
 export { expect } from '@playwright/test';
 
 /**
- * Login via Bridge auth flow. Demo uses "Login with bridge" button; tokens stored in bridge_access_token.
+ * Login via Bridge auth flow. Demo uses "Login with bridge" button; tokens
+ * are stored by auth-core under the namespaced `bridge_tokens:<appId>` key.
  */
 export async function loginViaBridgeAuth(
   page: Page,
@@ -89,19 +90,32 @@ export async function loginViaBridgeAuth(
     );
   }
 
-  const emailInput = page.locator('#email, input[name="username"], input[type="email"]').first();
+  const emailInput = page
+    .locator('#email, input[name="username"], input[type="email"], input[placeholder*="example.com"]')
+    .first();
   await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
   await emailInput.fill(email);
 
+  // The hosted bridge-auth login is now a SINGLE-STEP form (Email + Password +
+  // "Sign in" on one screen). Older builds used a two-step flow (email →
+  // "Continue" → password). Support both: click "Continue" only if it actually
+  // appears, otherwise fall straight through to the password field.
   const continueButton = page.locator('button[type="submit"]:has-text("Continue")').first();
-  await continueButton.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
-  await continueButton.click();
+  if (await continueButton.isVisible().catch(() => false)) {
+    await continueButton.click();
+  }
 
-  const passwordInput = page.locator('#password, input[name="password"], input[type="password"]').first();
+  const passwordInput = page
+    .locator('#password, input[name="password"], input[type="password"], input[placeholder*="password"]')
+    .first();
   await passwordInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
   await passwordInput.fill(password);
 
-  const signInButton = page.locator('button[type="submit"]:has-text("Sign in")').first();
+  // "Sign in" is disabled until both fields are filled; .fill() above dispatches
+  // the input events that enable it. Playwright auto-waits for it to be enabled.
+  const signInButton = page
+    .locator('button[type="submit"]:has-text("Sign in"), button:has-text("Sign in")')
+    .first();
   await signInButton.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
   await signInButton.click();
 
@@ -125,12 +139,81 @@ export async function loginViaBridgeAuth(
 
   await page.waitForLoadState('networkidle');
 
+  // Verify tokens are stored. auth-core namespaces the storage key as
+  // `bridge_tokens:<appId>` (the legacy single-string `bridge_access_token`
+  // key is gone after the unified-core hard-replace) — match by prefix.
   const hasTokens = await page.evaluate(() => {
-    const token = localStorage.getItem('bridge_access_token');
-    return !!token;
+    const key = Object.keys(localStorage).find(
+      (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+    );
+    if (!key) return false;
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    try {
+      const tokens = JSON.parse(raw);
+      return !!tokens?.accessToken;
+    } catch {
+      return false;
+    }
   });
 
   if (!hasTokens) {
-    throw new Error(`Login appeared to succeed but no bridge_access_token in localStorage. URL: ${page.url()}`);
+    throw new Error(
+      `Login appeared to succeed but no bridge_tokens:<appId> in localStorage. URL: ${page.url()}`,
+    );
   }
+}
+
+/**
+ * Login via the in-app SDK auth flow (the `<LoginForm>` rendered on `/auth/login`).
+ * Mirrors `bridge-svelte/e2e/playwright/fixtures/auth.ts::loginViaSdkAuth`.
+ *
+ * Unlike `loginViaBridgeAuth` (which redirects to hosted auth), SDK auth posts
+ * credentials directly to auth-core and stores `bridge_tokens` in localStorage.
+ */
+export async function loginViaSdkAuth(
+  page: Page,
+  email: string,
+  password: string,
+): Promise<void> {
+  console.log(`[sdk-login] Starting SDK login for ${email}`);
+
+  await page.goto('/auth/login');
+  await page.waitForLoadState('networkidle');
+
+  const emailInput = page.locator('#login-email');
+  await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
+  await emailInput.fill(email);
+
+  const passwordInput = page.locator('#login-password');
+  await passwordInput.fill(password);
+
+  const signInBtn = page.locator('button[type="submit"]:has-text("Sign in")');
+  await signInBtn.click();
+
+  // auth-core namespaces the storage key as `bridge_tokens:<appId>` (older
+  // builds used the bare `bridge_tokens`) — match either by prefix.
+  await page.waitForFunction(
+    () => {
+      const key = Object.keys(localStorage).find(
+        (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+      );
+      if (!key) return false;
+      const raw = localStorage.getItem(key);
+      if (!raw) return false;
+      try {
+        const tokens = JSON.parse(raw);
+        return !!tokens?.accessToken;
+      } catch {
+        return false;
+      }
+    },
+    { timeout: LONG_TIMEOUT },
+  );
+
+  await page.waitForURL('**/protected', { timeout: MED_TIMEOUT }).catch(() => {
+    /* may not redirect to /protected in all configurations */
+  });
+
+  console.log(`[sdk-login] SDK login complete for ${email}. Current URL: ${page.url()}`);
 }

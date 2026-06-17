@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@nebulr-group/bridge-react": "file:../bridge-react",
+    "@stripe/stripe-js": "^9.5.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^6.28.0"

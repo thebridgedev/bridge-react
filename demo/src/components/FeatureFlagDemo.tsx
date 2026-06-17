@@ -1,4 +1,4 @@
-import { FeatureFlag, useAuth, useFeatureFlag } from '@nebulr-group/bridge-react';
+import { FeatureFlag, useAuth, useFlag } from '@nebulr-group/bridge-react';
 
 const PRIMARY_FLAG = 'demo-flag';
 const SECONDARY_FLAG = 'beta-dashboard';
@@ -6,9 +6,9 @@ const MAINTENANCE_FLAG = 'maintenance-mode';
 
 function FeatureFlagDemo() {
   const { isAuthenticated } = useAuth();
-  const premiumEnabled = useFeatureFlag(PRIMARY_FLAG);
-  const betaDashboardEnabled = useFeatureFlag(SECONDARY_FLAG, { forceLive: true });
-  const maintenanceMode = useFeatureFlag(MAINTENANCE_FLAG);
+  const { value: premiumEnabled } = useFlag(PRIMARY_FLAG, false);
+  const { value: betaDashboardEnabled } = useFlag(SECONDARY_FLAG, false);
+  const { value: maintenanceMode } = useFlag(MAINTENANCE_FLAG, false);
 
   return (
     <section className="page-section">
@@ -32,10 +32,11 @@ function FeatureFlagDemo() {
             <span className="badge">Flag: {PRIMARY_FLAG}</span>
           </div>
           <p className="muted">
-            Uses the locally cached 5-minute window via <code>&lt;FeatureFlag /&gt;</code>.
+            Uses the locally cached flag rules via <code>&lt;FeatureFlag /&gt;</code>.
           </p>
           <FeatureFlag
-            flagName={PRIMARY_FLAG}
+            flagKey={PRIMARY_FLAG}
+            defaultValue={false}
             fallback={<div className="notice">Enable <strong>{PRIMARY_FLAG}</strong> to reveal the premium widget.</div>}
           >
             <div className="success-banner">
@@ -46,15 +47,16 @@ function FeatureFlagDemo() {
 
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">Live evaluation</h3>
+            <h3 className="card-title">Reactive evaluation</h3>
             <span className="badge">Flag: {SECONDARY_FLAG}</span>
           </div>
           <p className="muted">
-            Pass <code>forceLive</code> to bypass the cache when you need real-time decisions.
+            <code>&lt;FeatureFlag /&gt;</code> is reactive — it updates instantly via the realtime channel when you flip
+            the flag.
           </p>
           <FeatureFlag
-            flagName={SECONDARY_FLAG}
-            forceLive
+            flagKey={SECONDARY_FLAG}
+            defaultValue={false}
             fallback={<div className="notice">Flip <strong>{SECONDARY_FLAG}</strong> on to preview the beta dashboard.</div>}
           >
             <div className="highlight-card">
@@ -72,7 +74,7 @@ function FeatureFlagDemo() {
             </span>
           </div>
           <p className="muted">
-            <code>useFeatureFlag</code> returns the boolean so you can branch imperatively.
+            <code>useFlag</code> returns <code>{'{ value, passed }'}</code> so you can branch imperatively.
           </p>
           {maintenanceMode ? (
             <div className="error-banner">
@@ -95,7 +97,7 @@ function FeatureFlagDemo() {
           </div>
           <div className="status-box">
             <div className="status-label">{SECONDARY_FLAG}</div>
-            <div className="status-value">{betaDashboardEnabled ? 'Enabled (live)' : 'Disabled'}</div>
+            <div className="status-value">{betaDashboardEnabled ? 'Enabled (reactive)' : 'Disabled'}</div>
           </div>
           <div className="status-box">
             <div className="status-label">{MAINTENANCE_FLAG}</div>
@@ -108,4 +110,3 @@ function FeatureFlagDemo() {
 }
 
 export default FeatureFlagDemo;
-

@@ -1,4 +1,4 @@
-import { Login, useAuth, useProfile } from '@nebulr-group/bridge-react';
+import { Login, ProfileName, useAuth } from '@nebulr-group/bridge-react';
 import { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 
@@ -14,13 +14,13 @@ const navItems: NavItem[] = [
   { label: 'Profile', to: '/profile', requiresAuth: true },
   { label: 'Feature Flags', to: '/feature-flags', requiresAuth: true },
   // { label: 'Team', to: '/team', requiresAuth: true },
-  // { label: 'Subscription', to: '/subscription', requiresAuth: true },
+  { label: 'Subscription', to: '/subscription', requiresAuth: true },
+  { label: 'API Tokens', to: '/api-tokens', requiresAuth: true },
   { label: 'Token Status', to: '/token-status', requiresAuth: true }
 ];
 
 function Navbar() {
   const { isAuthenticated, isLoading, logout } = useAuth();
-  const { profile } = useProfile();
 
   const filteredItems = useMemo(
     () =>
@@ -55,9 +55,7 @@ function Navbar() {
 
           {isAuthenticated ? (
             <div className="nav-links">
-              {!isLoading && profile?.fullName && (
-                <span className="pill">{profile.fullName}</span>
-              )}
+              {!isLoading && <ProfileName className="pill" />}
               <button type="button" className="nav-button" onClick={logout}>
                 Logout
               </button>

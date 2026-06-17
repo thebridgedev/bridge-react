@@ -76,5 +76,24 @@ export interface BridgeConfig {
    * @env REACT_APP_BRIDGE_DEBUG or VITE_BRIDGE_DEBUG
    */
   debug?: boolean;
+
+  /**
+   * Billing paywall configuration. When set, Bridge redirects authenticated
+   * users that still have to pick a plan (`shouldSelectPlan === true` and the
+   * app has not opted out via `paymentsAutoRedirect: false`) to `paywallRoute`
+   * before the page renders. Mirrors bridge-svelte's `billing` config.
+   */
+  billing?: {
+    /**
+     * Route to redirect to when the tenant has no plan selected.
+     * e.g. `/welcome`, `/onboarding/plan`, or `/subscription`.
+     */
+    paywallRoute?: string;
+    /**
+     * Route to redirect to when a Stripe checkout confirmation fails.
+     * Defaults to `/payment-error`.
+     */
+    paymentErrorRoute?: string;
+  };
 }
 
