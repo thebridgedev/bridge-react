@@ -7,6 +7,8 @@ export interface EnvironmentConfig {
   baseUrl: string;
   authBaseUrl?: string;
   cloudViewsUrl?: string;
+  /** Bridge API base URL — used for subscription mocking / probes in E2E. */
+  apiBaseUrl: string;
   testDataApiUrl: string;
   testDataApiKey: string;
   appId: string;
@@ -73,6 +75,7 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
         baseUrl,
         authBaseUrl,
         cloudViewsUrl,
+        apiBaseUrl: testDataApiUrl,
         testDataApiUrl,
         testDataApiKey,
         appId,
@@ -80,28 +83,34 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
         isContainer,
       };
     }
-    case 'stage':
+    case 'stage': {
+      const stageTestDataApiUrl = requireEnv('STAGE_TEST_DATA_API_URL');
       return {
         name: 'stage',
         baseUrl,
         authBaseUrl: requireEnv('STAGE_AUTH_BASE_URL'),
         cloudViewsUrl: requireEnv('STAGE_CLOUD_VIEWS_URL'),
-        testDataApiUrl: requireEnv('STAGE_TEST_DATA_API_URL'),
+        apiBaseUrl: stageTestDataApiUrl,
+        testDataApiUrl: stageTestDataApiUrl,
         testDataApiKey,
         appId,
         appDomain,
         isContainer: false,
       };
-    case 'prod':
+    }
+    case 'prod': {
+      const prodTestDataApiUrl = requireEnv('PROD_TEST_DATA_API_URL');
       return {
         name: 'prod',
         baseUrl,
-        testDataApiUrl: requireEnv('PROD_TEST_DATA_API_URL'),
+        apiBaseUrl: prodTestDataApiUrl,
+        testDataApiUrl: prodTestDataApiUrl,
         testDataApiKey,
         appId,
         appDomain,
         isContainer: false,
       };
+    }
   }
 }
 

@@ -1,6 +1,8 @@
+import { jwtDecode } from 'jwt-decode';
 import { FC, useEffect, useState } from 'react';
+import { getBridgeAuth } from '../../core/bridge-instance';
 import { useBridgeToken } from '../../hooks/use-bridge-token';
-import { TokenService } from '../../services/token.service';
+import { logger } from '../../utils/logger';
 
 export interface TokenStatusProps {
   /**
@@ -9,113 +11,92 @@ export interface TokenStatusProps {
   className?: string;
 }
 
+/** Returns the access-token expiry time in ms epoch, or null if undecodable. */
+function getTokenExpiryTime(accessToken: string): number | null {
+  try {
+    const decoded = jwtDecode<{ exp?: number }>(accessToken);
+    return decoded.exp ? decoded.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Component to display token status
- * 
- * @param props The component props
- * @returns The component
- * 
+ * Component to display token status. Rides the auth-core singleton for token
+ * access + refresh (no legacy TokenService).
+ *
  * @example
- * // In your component
  * import { TokenStatus } from '@nebulr-group/bridge-react';
- * 
+ *
  * function MyComponent() {
- *   return (
- *     <div>
- *       <h2>Authentication Status</h2>
- *       <TokenStatus />
- *     </div>
- *   );
+ *   return <TokenStatus />;
  * }
  */
 export const TokenStatus: FC<TokenStatusProps> = ({ className }) => {
-  const { isAuthenticated, isLoading, getAccessToken, getRefreshToken, getIdToken } = useBridgeToken();
-  const tokenService = TokenService.getInstance();
+  const { getAccessToken } = useBridgeToken();
   const [hasToken, setHasToken] = useState<boolean>(false);
   const [tokenExpiresIn, setTokenExpiresIn] = useState<number | null>(null);
   const [lastRenewal, setLastRenewal] = useState<number | null>(null);
   const [isRenewing, setIsRenewing] = useState<boolean>(false);
-  
+
   useEffect(() => {
-    console.log('TokenStatus - Component mounted');
-    
-    // Check if token is available
-    const accessToken = getAccessToken();
-    console.log('TokenStatus - accessToken available:', !!accessToken);
-    
-    if (accessToken) {
-      setHasToken(true);
-      
-      // Calculate token expiry time
-      const expiryTime = tokenService.getTokenExpiryTime(accessToken);
-      if (expiryTime) {
-        const timeUntilExpiry = expiryTime - Date.now();
-        setTokenExpiresIn(Math.floor(timeUntilExpiry / 1000)); // Convert to seconds
-      }
-    } else {
-      setHasToken(false);
-      setTokenExpiresIn(null);
-    }
-    
-    // Set up interval to update token expiry time
-    const interval = setInterval(() => {
+    const updateExpiry = () => {
       const accessToken = getAccessToken();
       if (accessToken) {
-        const expiryTime = tokenService.getTokenExpiryTime(accessToken);
+        setHasToken(true);
+        const expiryTime = getTokenExpiryTime(accessToken);
         if (expiryTime) {
           const timeUntilExpiry = expiryTime - Date.now();
-          setTokenExpiresIn(Math.floor(timeUntilExpiry / 1000)); // Convert to seconds
+          setTokenExpiresIn(Math.floor(timeUntilExpiry / 1000));
         }
+      } else {
+        setHasToken(false);
+        setTokenExpiresIn(null);
       }
-    }, 1000);
-    
+    };
+
+    updateExpiry();
+    const interval = setInterval(updateExpiry, 1000);
     return () => clearInterval(interval);
   }, [getAccessToken]);
-  
-  // Function to refresh token
+
+  // Function to refresh token via the auth-core singleton.
   const refreshToken = async () => {
     if (isRenewing) return;
-    
+
     setIsRenewing(true);
     try {
-      const success = await tokenService.refreshToken();
-      if (success) {
+      const tokens = await getBridgeAuth().refreshTokens();
+      if (tokens) {
         setLastRenewal(Date.now());
-        console.log('TokenStatus - Token refreshed successfully');
-      } else {
-        console.log('TokenStatus - Token refresh failed');
       }
     } catch (error) {
-      console.error('TokenStatus - Error refreshing token:', error);
+      logger.error('[TokenStatus] Error refreshing token:', error);
     } finally {
       setIsRenewing(false);
     }
   };
-  
+
   // Format the time until expiry
   const formatExpiryTime = (seconds: number | null): string => {
-    console.log('TokenStatus.formatExpiryTime - seconds:', seconds);
-    
     if (seconds === null) return 'No token';
-    
+
     if (seconds < 0) return 'Expired';
-    
+
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
-    
+
     if (minutes > 0) {
       return `${minutes}m ${remainingSeconds}s`;
     }
-    
+
     return `${remainingSeconds}s`;
   };
 
   // Format the last renewal time
   const formatLastRenewal = (): string => {
-    console.log('TokenStatus.formatLastRenewal - lastRenewal:', lastRenewal);
-    
     if (!lastRenewal) return 'No renewals yet';
-    
+
     const date = new Date(lastRenewal);
     return date.toLocaleTimeString();
   };
@@ -149,4 +130,3 @@ export const TokenStatus: FC<TokenStatusProps> = ({ className }) => {
     </div>
   );
 };
-

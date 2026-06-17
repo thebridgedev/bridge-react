@@ -1,26 +1,48 @@
-import { Subscription } from '@nebulr-group/bridge-react';
+import {
+  BridgeBillingNotice,
+  BridgeQuotaBanner,
+  BridgeSubscriptionStatus,
+  PlanSelector,
+} from '@nebulr-group/bridge-react';
 
 function SubscriptionPage() {
+  // Metric to watch with the live quota banner. Matches the svelte/nextjs demo's probe.
+  const metric = 'num.clicks';
+
   return (
     <div className="page-section">
-      <h1 className="page-heading">Subscription management</h1>
+      <h1 className="page-heading">Subscription</h1>
       <p className="page-subheading">
-        Redirects authenticated users to the bridge-hosted plan selection experience. Useful for billing portals and
-        add-on upgrades.
+        Pick a plan. Free plans select immediately; paid plans go to Stripe Checkout.
       </p>
 
-      <div className="card">
-        <h3>What happens here?</h3>
+      {/* ── Billing 2.0 canonical-model drop-ins ───────────────────────────── */}
+      <section className="page-section">
+        <h2>Billing 2.0 components</h2>
         <p className="muted">
-          The component initialises the team management service, exchanges the current access token for a handover code,
-          and performs a full-page redirect. If anything fails the user sees an inline error message.
+          Live, reactive drop-ins backed by <code>useBridge()</code> (auth-core
+          billing surface). They render nothing when billing is healthy / under cap.
         </p>
-      </div>
 
-      <Subscription />
+        <div data-bridge-subscription-status style={{ margin: '0.75rem 0' }}>
+          <BridgeSubscriptionStatus />
+        </div>
+
+        {/* Multi-state notice banner (past_due / trial / cancel / dunning / locked) */}
+        <BridgeBillingNotice chassis="rail" />
+
+        {/* Live quota counter — renders only at ≥80% of the cap */}
+        <BridgeQuotaBanner metric={metric} chassis="rail" />
+      </section>
+
+      {/* ── Classic Stripe-direct plan picker ──────────────────────────────── */}
+      <PlanSelector
+        successRedirect="/subscription/success"
+        cancelRedirect="/subscription/cancel"
+        onSelect={({ plan }) => console.log('[Subscription] selected', plan.key)}
+      />
     </div>
   );
 }
 
 export default SubscriptionPage;
-

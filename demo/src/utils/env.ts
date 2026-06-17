@@ -20,7 +20,16 @@ export function getBridgeConfig(): BridgeConfig {
   }
 
   const config: BridgeConfig = {
-    appId
+    appId,
+    // Billing paywall wiring. `billing` is a runtime-only field (no env-var
+    // derivation), so the demo sets it here. Mirrors bridge-svelte's
+    // `billing.paywallRoute: '/welcome'` + bridge-nextjs's Providers config:
+    // authenticated, plan-less users are bounced to the PUBLIC /welcome route
+    // (PlanSelector); a failed Stripe confirm lands on /payment-error.
+    billing: {
+      paywallRoute: '/welcome',
+      paymentErrorRoute: '/payment-error',
+    },
   };
 
   if (runtimeEnv.VITE_BRIDGE_AUTH_BASE_URL) {

@@ -36,7 +36,8 @@ function HomePage() {
             Toggle <code>{FEATURE_FLAG_NAME}</code> in bridge Control Center to see the UI update instantly.
           </p>
           <FeatureFlag
-            flagName={FEATURE_FLAG_NAME}
+            flagKey={FEATURE_FLAG_NAME}
+            defaultValue={false}
             fallback={<div className="notice">Flag disabled — turn on {FEATURE_FLAG_NAME} to reveal a premium call-to-action.</div>}
           >
             <div className="success-banner">
@@ -67,23 +68,23 @@ function HomePage() {
             <p className="muted">Cached vs live checks, negation, programmatic branching, and refresh flows.</p>
             <div className="chip-list">
               <span className="chip">FeatureFlag</span>
-              <span className="chip">useFeatureFlag</span>
+              <span className="chip">useFlag</span>
             </div>
           </div>
           <div className="feature-card">
             <h4>Team management</h4>
-            <p className="muted">The portal is embedded as an iframe and can be launched in a separate window.</p>
+            <p className="muted">Native in-app team UI (no iframe) — users, profile, and workspace tabs.</p>
             <div className="chip-list">
-              <span className="chip">Team</span>
-              <span className="chip">useTeamManagement</span>
+              <span className="chip">TeamManagementPanel</span>
+              <span className="chip">TeamService</span>
             </div>
           </div>
           <div className="feature-card">
             <h4>Subscriptions</h4>
-            <p className="muted">Demonstrates redirecting users to the hosted subscription / plan selection flow.</p>
+            <p className="muted">In-app plan selection + Billing 2.0 drop-ins backed by auth-core.</p>
             <div className="chip-list">
-              <span className="chip">Subscription</span>
-              <span className="chip">TeamManagementService</span>
+              <span className="chip">PlanSelector</span>
+              <span className="chip">useSubscription</span>
             </div>
           </div>
         </div>

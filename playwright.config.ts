@@ -14,6 +14,11 @@ function getViteMode(): string {
   return 'test.local';
 }
 
+// Demo dev-server port (matches the bridge-port §7.1 assignment).
+// Overridable via HARNESS_PORT / LOCAL_BASE_URL.
+const HARNESS_PORT = process.env.HARNESS_PORT || '3001';
+const HARNESS_URL = process.env.LOCAL_BASE_URL || `http://localhost:${HARNESS_PORT}`;
+
 export default defineConfig({
   testDir: './e2e/playwright/tests',
   timeout: 60_000,
@@ -28,7 +33,7 @@ export default defineConfig({
     ['list'],
   ],
   use: {
-    baseURL: process.env.LOCAL_BASE_URL || 'http://localhost:3001',
+    baseURL: HARNESS_URL,
     trace: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'retain-on-failure',
     screenshot: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'only-on-failure',
     headless: process.env.PLAYWRIGHT_HEADED !== 'true',
@@ -41,9 +46,9 @@ export default defineConfig({
   ],
   outputDir: 'test-reports/test-results',
   webServer: {
-    // Use root node_modules (workspace hoisting); overrides + rm .bun fix esbuild version mismatch
-    command: `cd demo && node ../node_modules/vite/bin/vite.js --host 0.0.0.0 --port 3001 --mode ${getViteMode()}`,
-    url: 'http://localhost:3001',
+    // Use root node_modules (workspace hoisting); overrides + rm .bun fix esbuild version mismatch.
+    command: `cd demo && node ../node_modules/vite/bin/vite.js --host 0.0.0.0 --port ${HARNESS_PORT} --mode ${getViteMode()}`,
+    url: HARNESS_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },

@@ -11,8 +11,9 @@
     },
     "bridge-react": {
       "name": "@nebulr-group/bridge-react",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
+        "@nebulr-group/bridge-auth-core": "0.4.0-beta.5",
         "jose": "^6.0.10",
         "jwt-decode": "^4.0.0",
         "zustand": "^4.5.0",
@@ -36,6 +37,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@nebulr-group/bridge-react": "file:../bridge-react",
+        "@stripe/stripe-js": "^9.5.0",
         "react": "^19.1.1",
         "react-dom": "^19.1.1",
         "react-router-dom": "^6.28.0",
@@ -188,6 +190,8 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
+    "@nebulr-group/bridge-auth-core": ["@nebulr-group/bridge-auth-core@0.4.0-beta.5", "", { "dependencies": { "jose": "^5.2.0" } }, "sha512-ESKnqCz6P5LQcorNEZ9dbWA3Ukr2IedKrifmhgpB3BGFfiOr5Th8coc7T3T/v0wk3hXh4AtTV7C6AA2qqOL+XA=="],
+
     "@nebulr-group/bridge-react": ["@nebulr-group/bridge-react@workspace:bridge-react"],
 
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
@@ -251,6 +255,8 @@
     "@rollup/rollup-win32-x64-gnu": ["@rollup/rollup-win32-x64-gnu@4.52.5", "", { "os": "win32", "cpu": "x64" }, "sha512-UGBUGPFp1vkj6p8wCRraqNhqwX/4kNQPS57BCFc8wYh0g94iVIW33wJtQAx3G7vrjjNtRaxiMUylM0ktp/TRSQ=="],
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.52.5", "", { "os": "win32", "cpu": "x64" }, "sha512-TAcgQh2sSkykPRWLrdyy2AiceMckNf5loITqXxFI5VuQjS5tSuw3WlwdN8qv8vzjLAUTvYaH/mVjSFpbkFbpTg=="],
+
+    "@stripe/stripe-js": ["@stripe/stripe-js@9.8.0", "", {}, "sha512-DHJpol/98VKyojNSYmpkB5vOMnlf87hPe0wPxyaYTNiTMk5QjKMXDfSZLwGctYIXAgAWDFeRABc8lFAj0BELyw=="],
 
     "@types/babel__core": ["@types/babel__core@7.20.5", "", { "dependencies": { "@babel/parser": "^7.20.7", "@babel/types": "^7.20.7", "@types/babel__generator": "*", "@types/babel__template": "*", "@types/babel__traverse": "*" } }, "sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA=="],
 
@@ -598,6 +604,8 @@
 
     "@eslint/plugin-kit/@eslint/core": ["@eslint/core@0.17.0", "", { "dependencies": { "@types/json-schema": "^7.0.15" } }, "sha512-yL/sLrpmtDaFEiUj1osRP4TI2MDz1AddJL+jZ7KSqvBuliN4xqYY54IfdN8qD8Toa6g1iloph1fxQNkjOxrrpQ=="],
 
+    "@nebulr-group/bridge-auth-core/jose": ["jose@5.10.0", "", {}, "sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg=="],
+
     "@types/react-dom/@types/react": ["@types/react@19.2.2", "", { "dependencies": { "csstype": "^3.0.2" } }, "sha512-6mDvHUFSjyT2B2yeNx2nUgMxh9LtOWvkhIU3uePn2I2oyNymUAX1NIsdgviM4CH+JSrp2D2hsMvJOkxY+0wNRA=="],
 
     "@typescript-eslint/eslint-plugin/ignore": ["ignore@7.0.5", "", {}, "sha512-Hs59xBNfUIunMFgWAbGX5cq6893IbWg4KnrjbYwX3tx0ztorVgTDA6B2sxf8ejHJ4wz8BqGUMYlnzNBer5NvGg=="],
@@ -606,7 +614,7 @@
 
     "@typescript-eslint/typescript-estree/semver": ["semver@7.7.3", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q=="],
 
-    "demo/@nebulr-group/bridge-react": ["@nebulr-group/bridge-react@file:bridge-react", { "dependencies": { "jose": "^6.0.10", "jwt-decode": "^4.0.0", "zustand": "^4.5.0" }, "devDependencies": { "@rollup/plugin-terser": "^0.4.4", "@rollup/plugin-typescript": "^11.1.6", "@types/node": "^24.9.2", "@types/react": "^18.2.0", "rollup": "^4.14.1", "tslib": "^2.6.2", "typescript": "^5.4.0" }, "peerDependencies": { "react": "^16.0.0 || ^17.0.0 || ^18.0.0", "react-dom": "^16.0.0 || ^17.0.0 || ^18.0.0" } }],
+    "demo/@nebulr-group/bridge-react": ["@nebulr-group/bridge-react@file:bridge-react", { "dependencies": { "@nebulr-group/bridge-auth-core": "0.4.0-beta.5", "jose": "^6.0.10", "jwt-decode": "^4.0.0", "zustand": "^4.5.0" }, "devDependencies": { "@rollup/plugin-terser": "^0.4.4", "@rollup/plugin-typescript": "^11.1.6", "@types/node": "^24.9.2", "@types/react": "^18.2.0", "rollup": "^4.14.1", "tslib": "^2.6.2", "typescript": "^5.4.0" }, "peerDependencies": { "react": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0", "react-dom": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }],
 
     "demo/@types/react": ["@types/react@19.2.2", "", { "dependencies": { "csstype": "^3.0.2" } }, "sha512-6mDvHUFSjyT2B2yeNx2nUgMxh9LtOWvkhIU3uePn2I2oyNymUAX1NIsdgviM4CH+JSrp2D2hsMvJOkxY+0wNRA=="],
 

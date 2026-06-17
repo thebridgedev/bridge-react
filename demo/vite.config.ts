@@ -24,6 +24,15 @@ export default defineConfig({
     port: 5173,
     strictPort: true
   },
+  build: {
+    rollupOptions: {
+      // `@stripe/stripe-js` is an optional peer the plugin's <PlanSelector>
+      // dynamically imports only for hosted Stripe Checkout. The demo uses free
+      // plans, so it isn't installed — externalize it so the production build
+      // doesn't fail trying to resolve it (matches the plugin's rollup external).
+      external: ['@stripe/stripe-js']
+    }
+  },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

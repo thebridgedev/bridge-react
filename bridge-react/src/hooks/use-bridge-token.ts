@@ -1,111 +1,58 @@
-import { useCallback, useEffect, useState } from 'react';
-import { AuthService } from '../services/auth.service';
-import { TokenService } from '../services/token.service';
-import { useBridgeConfig } from './use-bridge-config';
-
-// Initialize services outside component
-const tokenService = TokenService.getInstance();
-const authService = AuthService.getInstance();
+import { useCallback } from 'react';
+import { getBridgeAuth, useBridgeStore } from '../core/bridge-instance';
+import { logger } from '../utils/logger';
 
 /**
- * Hook for accessing bridge token functionality
- * 
- * @returns Token context values and functions
- * 
+ * Hook for accessing bridge token state and accessors, backed by the auth-core
+ * singleton + reactive bridge store. Powers `<TokenStatus />` and any consumer
+ * that needs raw token access alongside the redirect/hosted-auth flow.
+ *
  * @example
  * import { useBridgeToken } from '@nebulr-group/bridge-react';
- * 
+ *
  * function MyComponent() {
- *   const { isAuthenticated, login, logout } = useBridgeToken();
- *   
- *   return (
- *     <div>
- *       {isAuthenticated ? (
- *         <button onClick={logout}>Logout</button>
- *       ) : (
- *         <button onClick={() => login()}>Login</button>
- *       )}
- *     </div>
- *   );
+ *   const { isAuthenticated, getAccessToken } = useBridgeToken();
+ *   // ...
  * }
  */
 export const useBridgeToken = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const config = useBridgeConfig();
-  
-  // Initialize token service
-  useEffect(() => {
-    tokenService.init(config);
-  }, [config]);
-  
-  // Check authentication status
-  useEffect(() => {
-    let isMounted = true;
-    
-    const checkAuth = async () => {
-      try {
-        const isAuth = await tokenService.isAuthenticated();
-        
-        // Only update state if component is still mounted
-        if (isMounted) {
-          setIsAuthenticated(isAuth);
-          setIsLoading(false);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : 'An unknown error occurred');
-          setIsLoading(false);
-        }
-      }
-    };
-
-    checkAuth();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const tokens = useBridgeStore((s) => s.tokens);
+  const isLoading = useBridgeStore((s) => s.isLoading);
+  const error = useBridgeStore((s) => s.error);
 
   const login = useCallback(async (options?: { redirectUri?: string }) => {
     try {
-      setIsLoading(true);
-      await authService.login(options);
-      setIsAuthenticated(true);
-      setError(null);
+      const bridge = getBridgeAuth();
+      const loginUrl = bridge.createLoginUrl(options);
+      if (typeof window !== 'undefined') {
+        window.location.href = loginUrl;
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      setIsAuthenticated(false);
-    } finally {
-      setIsLoading(false);
+      logger.error('[useBridgeToken] login failed:', err);
     }
   }, []);
 
   const logout = useCallback(() => {
     try {
-      tokenService.clearTokens();
-      setIsAuthenticated(false);
-      setError(null);
+      getBridgeAuth().clearSession();
+      useBridgeStore.setState({
+        tokens: null,
+        profile: null,
+        flags: {},
+        authState: 'unauthenticated',
+        tenantUsers: [],
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      logger.error('[useBridgeToken] logout failed:', err);
     }
   }, []);
 
-  const getAccessToken = useCallback(() => {
-    return tokenService.getAccessToken();
-  }, []);
-
-  const getRefreshToken = useCallback(() => {
-    return tokenService.getRefreshToken();
-  }, []);
-
-  const getIdToken = useCallback(() => {
-    return tokenService.getIdToken();
-  }, []);
+  const getAccessToken = useCallback(() => getBridgeAuth().getTokens()?.accessToken ?? null, []);
+  const getRefreshToken = useCallback(() => getBridgeAuth().getTokens()?.refreshToken ?? null, []);
+  const getIdToken = useCallback(() => getBridgeAuth().getTokens()?.idToken ?? null, []);
 
   return {
-    isAuthenticated,
+    isAuthenticated: !!tokens?.accessToken,
     isLoading,
     error,
     login,
@@ -115,4 +62,3 @@ export const useBridgeToken = () => {
     getIdToken,
   };
 };
-

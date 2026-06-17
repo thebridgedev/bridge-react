@@ -153,6 +153,167 @@ export class TestDataClient {
     const result = (await response.json()) as { purgedCount?: number };
     return result.purgedCount ?? 0;
   }
+
+  // ── Subscription / billing test helpers (ported from bridge-nextjs) ──────────
+
+  /**
+   * Configures app-level billing/SSO settings for test scenarios.
+   */
+  async configureApp(config: {
+    paymentsAutoRedirect?: boolean;
+    stripeEnabled?: boolean;
+    redirectUris?: string[];
+    defaultCallbackUri?: string;
+    stripePublicKey?: string;
+    stripeSecretKey?: string;
+    currency?: string;
+    googleSsoEnabled?: boolean;
+    linkedinSsoEnabled?: boolean;
+    azureAdSsoEnabled?: boolean;
+    facebookSsoEnabled?: boolean;
+    githubSsoEnabled?: boolean;
+    appleSsoEnabled?: boolean;
+  }): Promise<{ appId: string; message: string }> {
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/configure-app`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-playwright-api-key': this.apiKey,
+      },
+      body: JSON.stringify({
+        appDomain: this.appDomain,
+        ...config,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to configure app: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Creates a plan in the app for test scenarios.
+   */
+  async createPlan(planData: {
+    key?: string;
+    name?: string;
+    description?: string;
+    trial?: boolean;
+    trialDays?: number;
+    prices?: Array<{ amount: number; currency: string; recurrenceInterval: string }>;
+  }): Promise<{ planId: string; key: string; name: string }> {
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/create-plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-playwright-api-key': this.apiKey,
+      },
+      body: JSON.stringify({
+        appDomain: this.appDomain,
+        ...planData,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to create plan: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Idempotently ensures a plan exists (create-if-absent).
+   *
+   * When the plan already exists, bridge-api returns it WITHOUT re-running the
+   * Stripe price sync/archive sweep — so a STABLE, reusable plan's Stripe price
+   * is synced exactly once and reused on every later run. This is what makes the
+   * welcome-paywall checkout deterministic (no create-then-checkout price race).
+   */
+  async ensurePlan(planData: {
+    key: string;
+    name?: string;
+    description?: string;
+    trial?: boolean;
+    trialDays?: number;
+    prices?: Array<{ amount: number; currency: string; recurrenceInterval: string }>;
+  }): Promise<{ planId: string; key: string; name: string; created: boolean }> {
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/ensure-plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-playwright-api-key': this.apiKey,
+      },
+      body: JSON.stringify({
+        appDomain: this.appDomain,
+        ...planData,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to ensure plan: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Deletes a plan by key for test cleanup.
+   */
+  async deletePlan(planKey: string): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/delete-plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-playwright-api-key': this.apiKey,
+      },
+      body: JSON.stringify({
+        appDomain: this.appDomain,
+        key: planKey,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to delete plan: ${response.status} ${error}`);
+    }
+  }
+
+  /**
+   * Sets a tenant's selected plan directly via the API (bypasses checkout).
+   */
+  async setTenantPlan(
+    tenantId: string,
+    planKey: string,
+    currency: string = 'usd',
+    recurrenceInterval: string = 'month',
+  ): Promise<{ shouldSelectPlan: boolean; shouldSetupPayments: boolean; trial: boolean }> {
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/set-tenant-plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-playwright-api-key': this.apiKey,
+      },
+      body: JSON.stringify({
+        appDomain: this.appDomain,
+        tenantId,
+        planKey,
+        currency,
+        recurrenceInterval,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to set tenant plan: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
 }
 
 export function createTestDataClientFromEnv(): TestDataClient {
@@ -176,6 +337,7 @@ export function createTestDataClientFromEnv(): TestDataClient {
   return new TestDataClient({
     name: 'local',
     baseUrl: '',
+    apiBaseUrl: testDataApiUrl,
     testDataApiUrl,
     testDataApiKey,
     appId: process.env.BRIDGE_TEST_APP_ID || '',

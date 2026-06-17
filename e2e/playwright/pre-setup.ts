@@ -13,8 +13,11 @@ dotenv.config({
   override: false,
 });
 
-const DEMO_PORT = 3001;
-const APP_URL = `http://localhost:${DEMO_PORT}`;
+// The app's callback origin registered with bridge-api. Must match where the
+// demo serves (playwright.config.ts webServer). Default port matches the
+// bridge-port §7.1 assignment; overridable via HARNESS_PORT / LOCAL_BASE_URL.
+const DEMO_PORT = process.env.HARNESS_PORT || '3001';
+const APP_URL = process.env.LOCAL_BASE_URL || `http://localhost:${DEMO_PORT}`;
 
 async function preSetup() {
   const mode = process.argv[2] || 'test.local';
@@ -87,19 +90,37 @@ async function preSetup() {
   }
 
   let authBaseUrl = '';
+  // apiBaseUrl is what the BridgeProvider/auth-core actually consume
+  // (VITE_BRIDGE_API_BASE_URL → BridgeAuthConfig.apiBaseUrl). auth-core derives
+  // authBaseUrl = `${apiBaseUrl}/auth` and the hosted login URL from it. Without
+  // this the demo defaults to the PROD `api.thebridge.dev` / `auth.thebridge.dev`,
+  // and SDK + hosted logins against a LOCAL test app fail with "App is
+  // unauthenticated". The legacy VITE_BRIDGE_AUTH_BASE_URL key is NOT read by the
+  // react provider — apiBaseUrl is the correct hook (matches the svelte demo).
+  let apiBaseUrl = '';
   let callbackUrl = `${APP_URL}/auth/oauth-callback`;
   if (mode === 'test.local') {
-    authBaseUrl = process.env.LOCAL_AUTH_BASE_URL || `${testDataApiUrl.replace(/\/$/, '')}/auth`;
+    apiBaseUrl = testDataApiUrl.replace(/\/$/, '');
+    authBaseUrl = process.env.LOCAL_AUTH_BASE_URL || `${apiBaseUrl}/auth`;
   } else if (mode === 'test.stage' && process.env.STAGE_AUTH_BASE_URL) {
     authBaseUrl = process.env.STAGE_AUTH_BASE_URL;
+    apiBaseUrl = process.env.STAGE_TEST_DATA_API_URL?.replace(/\/$/, '') || '';
   } else if (mode === 'test.prod') {
     authBaseUrl = ''; // prod uses plugin default
+    apiBaseUrl = ''; // prod uses plugin default (api.thebridge.dev)
   }
 
   let envContent: string;
   if (fs.existsSync(envFile)) {
     envContent = fs.readFileSync(envFile, 'utf-8');
     envContent = envContent.replace(/^VITE_BRIDGE_APP_ID=.*$/m, `VITE_BRIDGE_APP_ID=${appId}`);
+    if (apiBaseUrl) {
+      if (/^VITE_BRIDGE_API_BASE_URL=/m.test(envContent)) {
+        envContent = envContent.replace(/^VITE_BRIDGE_API_BASE_URL=.*$/m, `VITE_BRIDGE_API_BASE_URL=${apiBaseUrl}`);
+      } else {
+        envContent += `\nVITE_BRIDGE_API_BASE_URL=${apiBaseUrl}`;
+      }
+    }
     if (authBaseUrl) {
       if (/^VITE_BRIDGE_AUTH_BASE_URL=/m.test(envContent)) {
         envContent = envContent.replace(/^VITE_BRIDGE_AUTH_BASE_URL=.*$/m, `VITE_BRIDGE_AUTH_BASE_URL=${authBaseUrl}`);
@@ -116,6 +137,7 @@ async function preSetup() {
     }
   } else {
     envContent = `# E2E test env — written by pre-setup\nVITE_BRIDGE_APP_ID=${appId}\n`;
+    if (apiBaseUrl) envContent += `VITE_BRIDGE_API_BASE_URL=${apiBaseUrl}\n`;
     if (authBaseUrl) envContent += `VITE_BRIDGE_AUTH_BASE_URL=${authBaseUrl}\n`;
     if (callbackUrl) envContent += `VITE_BRIDGE_CALLBACK_URL=${callbackUrl}\n`;
   }
