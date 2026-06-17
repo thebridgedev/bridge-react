@@ -63,7 +63,6 @@ bridge-plugins/*
 bridge-angular-reference/*
 **/.turbo
 .bash_history
-*workspace*
 .bun
 docs/
 .tmp/
