@@ -1,6 +1,6 @@
 import { FC, ReactNode, useEffect, useRef } from 'react';
 import { BridgeConfig } from '../types/config';
-import { ensureAppConfig, getBridgeAuth, initBridge, markReady } from '../core/bridge-instance';
+import { ensureAppConfig, getBridgeAuth, initBridge, markReady, setBridgeConfig } from '../core/bridge-instance';
 import { startBridgeRuntime, stopBridgeRuntime } from '../core/bridge-runtime';
 import { createBridgeFlags, type BridgeFlagsBundle } from '../flags/bootstrap';
 import { getRouterAdapter } from '../utils/router-adapter';
@@ -125,6 +125,11 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
       }
 
       initBridge(authConfig);
+      // Capture the resolved config so components can read runtime-only
+      // fields (e.g. `billing.manageRoute`) via `getBridgeConfig()`. The
+      // merged auth config carries the BridgeConfig prop fields through
+      // buildAuthConfig's `...fromProps` spread.
+      setBridgeConfig(authConfig);
       markReady();
       // Mount the core Bridge runtime (realtime channel + session.snapshot
       // fanout + dev-attribute provider). Idempotent; reads appId/apiBaseUrl

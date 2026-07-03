@@ -23,7 +23,7 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useBridge, type QuotaSnapshot } from '@nebulr-group/bridge-auth-core';
-import { getBridgeAuth } from '../../core/bridge-instance';
+import { getBridgeAuth, getBridgeConfig } from '../../core/bridge-instance';
 
 type Chassis = 'rail';
 type Severity = 'warn' | 'critical';
@@ -41,6 +41,11 @@ export interface BridgeQuotaBannerProps {
   /** Override the default Upgrade CTA click handler. */
   onActionClick?: (snap: QuotaSnapshot) => void;
   /**
+   * CTA destination for this instance. Overrides `billing.manageRoute`
+   * config; `onActionClick` takes precedence over both.
+   */
+  actionHref?: string;
+  /**
    * Optional display label override. Defaults to the snapshot's `.label` (raw
    * metric key for US-11; the framework wrapper will eventually supply a
    * humanized label).
@@ -53,6 +58,7 @@ export function BridgeQuotaBanner({
   chassis = 'rail',
   className = '',
   onActionClick,
+  actionHref,
   label,
 }: BridgeQuotaBannerProps) {
   const bridgeBilling = useBridge();
@@ -121,8 +127,12 @@ export function BridgeQuotaBanner({
       onActionClick(snapshot);
       return;
     }
+    // Destination priority: `actionHref` prop → `billing.manageRoute` config
+    // → '/billing'. `getBridgeConfig()` returns null before the provider
+    // initializes, so this can never throw.
     if (typeof window !== 'undefined') {
-      window.location.href = '/billing';
+      const manageRoute = getBridgeConfig()?.billing?.manageRoute;
+      window.location.href = actionHref ?? manageRoute ?? '/billing';
     }
   }
 

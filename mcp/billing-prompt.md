@@ -74,7 +74,14 @@ It reads `useBridge().subscription` (the Billing 2.0 lifecycle snapshot from aut
 |------|------|---------|-------------|
 | `chassis` | `'bar' \| 'rail' \| 'card'` | `'rail'` | Visual shell |
 | `mode` | `'soft' \| 'hard'` | `'soft'` | `hard` renders a full lockscreen for the locked state |
-| `onActionClick` | `(state) => void` | — | Override the default CTA (which navigates to `/billing`) |
+| `onActionClick` | `(state) => void` | — | Override the default CTA click handler |
+| `actionHref` | `string` | — | CTA destination for this instance; falls back to `billing.manageRoute` config, then `/billing` |
+
+The CTA navigates to, in priority order: `onActionClick` → `actionHref` → `billing.manageRoute` config → `/billing`. Since this guide puts the plan page at `/subscription`, point the CTA there via the `<BridgeProvider>` config:
+
+```tsx
+<BridgeProvider config={{ appId: '...', billing: { manageRoute: '/subscription' } }}>
+```
 
 ## Step 2b — Plan-selection paywall (default)
 
@@ -111,7 +118,7 @@ Skip if the plans have no per-resource limits or feature differences.
 
 > Quotas and entitlements were configured in the master prompt (or the Bridge admin → **Plans**) via `bridge plan quota set` and `bridge plan entitlement set`. This step only surfaces them.
 
-To show a live quota counter, drop in `<BridgeQuotaBanner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` and ticks live as usage is reported, no polling. Props: `metric` (required), `label`, `onActionClick`.
+To show a live quota counter, drop in `<BridgeQuotaBanner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` and ticks live as usage is reported, no polling. Props: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; falls back to `billing.manageRoute` config, then `/billing`).
 
 To gate a feature by entitlement, call `useBridge().entitlements.can('key')`:
 
@@ -166,6 +173,7 @@ Before verifying, confirm every item was applied:
 - [ ] `bridge plan list` returns at least one plan
 - [ ] `SubscriptionPage` created with `<PlanSelector>` (no props needed for the standard plan-change flow)
 - [ ] `<BridgeBillingNotice />` added to the root layout
+- [ ] `billing: { manageRoute: '/subscription' }` set on `<BridgeProvider config>` so banner CTAs land on the plan page
 - [ ] Paywall: `<BridgePaywall>` wrapping the app (or `billing.paywallRoute` set on `<BridgeProvider>`)
 - [ ] Quota/entitlement UI added if plans have limits
 - [ ] No extra packages installed (`@stripe/stripe-js` must NOT be in package.json)

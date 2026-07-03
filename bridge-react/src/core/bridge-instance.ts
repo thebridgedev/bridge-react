@@ -24,10 +24,32 @@ import {
 } from '@nebulr-group/bridge-auth-core';
 import { create } from 'zustand';
 import { logger } from '../utils/logger';
+import type { BridgeConfig } from '../types/config';
 
 // ── Singleton ──────────────────────────────────────────────────────────────────
 
 let _instance: BridgeAuth | null = null;
+
+// ── Resolved plugin config ─────────────────────────────────────────────────────
+//
+// bridge-react has no config store (unlike bridge-svelte's config.store.ts);
+// the resolved config is captured here at init so components can read
+// runtime-only fields (e.g. `billing.manageRoute`) after mount.
+
+let _resolvedConfig: BridgeConfig | null = null;
+
+/** @internal — called by `<BridgeProvider>` during init with the resolved config. */
+export function setBridgeConfig(config: BridgeConfig): void {
+  _resolvedConfig = config;
+}
+
+/**
+ * The resolved `BridgeConfig` the provider was initialized with, or `null`
+ * before `<BridgeProvider>` has mounted — safe to call anywhere (never throws).
+ */
+export function getBridgeConfig(): BridgeConfig | null {
+  return _resolvedConfig;
+}
 
 // ── Subscription state shape ──────────────────────────────────────────────────
 
@@ -249,6 +271,7 @@ export const auth: BridgeAuth = new Proxy({} as BridgeAuth, {
 /** @internal — reset singleton + store. Used by tests only. Do not call from app code. */
 export function _resetBridgeInstance(): void {
   _instance = null;
+  _resolvedConfig = null;
   _appConfigPromise = null;
   _resolveReady = null;
   useBridgeStore.setState({
