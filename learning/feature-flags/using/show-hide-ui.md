@@ -1,16 +1,15 @@
 # Show or hide UI
 
-Declarative gating with optional fallback content. `children` and `fallback` may
-be plain nodes or render-props that receive the evaluated value:
+The most common thing to do with a flag is decide whether a piece of UI renders at all. The `<FeatureFlag>` component does that declaratively, with optional fallback content for the off case. The render props receive the evaluated value:
 
 ```tsx
-import { FeatureFlag } from '@nebulr-group/bridge-react';
+import { FeatureFlag } from '@nebulr-group/bridge-react/flags';
 
 <FeatureFlag flagKey="new_dashboard" defaultValue={false}>
   <NewDashboard />
 </FeatureFlag>
 
-// With a fallback for the non-matching case:
+{/* With fallback for the non-matching case: */}
 <FeatureFlag
   flagKey="premium_feature"
   defaultValue={false}
@@ -20,19 +19,14 @@ import { FeatureFlag } from '@nebulr-group/bridge-react';
 </FeatureFlag>
 ```
 
-> **Tip:** React reserves the prop name `key` for reconciliation and never forwards it to a component, so the flag key is passed as `flagKey`.
-
-For non-boolean flags, use the render-prop form to read the Bridge-decided value:
-
-```tsx
-<FeatureFlag flagKey="ui_theme" defaultValue="light">
-  {(value) => <App theme={value} />}
-</FeatureFlag>
-```
+> **Framework note:** React reserves the prop name `key` for reconciliation and
+> never forwards it to a component, so the flag key is passed as `flagKey`.
+> `children` and `fallback` also accept plain nodes when you don't need the
+> evaluated value.
 
 ## Sending context
 
-`<FeatureFlag>` takes the same per-call context as `useFlag`'s third argument — use it when the rule targets an app-specific attribute Bridge doesn't already know (see [Send context from your code](/feature-flags/targeting/send-context/)):
+`<FeatureFlag>` takes the same per-call eval context (the identity and attributes a flag rule evaluates against) as `useFlag`'s third argument. Use it when the rule targets an app-specific attribute Bridge doesn't already know (see [Send context from your code](/feature-flags/targeting/send-context/)):
 
 ```tsx
 <FeatureFlag
@@ -44,7 +38,7 @@ For non-boolean flags, use the render-prop form to read the Bridge-decided value
 </FeatureFlag>
 ```
 
-`context` is a normal prop, so it's reactive for free — React re-renders the component (and re-evaluates the flag) whenever `projects.length` changes. No getter function is needed the way svelte requires; passing a fresh object each render is fine, since `useFlag` diffs the resolved value before re-rendering.
+Since `context` is a plain prop, it's reactive for free: React re-evaluates the object expression (and re-renders the flag) whenever `projects.length` changes.
 
 **Props:**
 
@@ -52,6 +46,6 @@ For non-boolean flags, use the render-prop form to read the Bridge-decided value
 |------|------|---------|-------------|
 | `flagKey` | `string` | **(required)** | The flag key |
 | `defaultValue` | `T` | **(required)** | Safe value; also sets the flag's inferred type |
-| `context` | `Partial<EvalContext>` | — | Per-call eval context (attributes win on collision) |
-| `children` | node \| `(value) => node` | — | Rendered when the flag passes; render-prop receives the value |
-| `fallback` | node \| `(value) => node` | — | Rendered when it doesn't; render-prop receives the value |
+| `context` | `Partial<EvalContext>` | (none) | Per-call eval context (attributes win on collision) |
+| `children` | node or `(value) => node` | (none) | Rendered when the flag passes; a render prop receives the value |
+| `fallback` | node or `(value) => node` | (none) | Rendered when it doesn't; a render prop receives the value |

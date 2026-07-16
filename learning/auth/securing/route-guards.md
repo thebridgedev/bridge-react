@@ -1,61 +1,81 @@
 ---
 title: Route guards
-description: Frontend route protection for React.
+description: Frontend route guards for React.
 sidebar:
   label: React
 ---
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 # Route guards
 
-bridge-react is a pure client-side (CSR) plugin — there's no server middleware, and no equivalent to bridge-svelte's declarative `routeConfig` (`rules` / `defaultAccess` / feature-flag-gated redirects). Route protection is per-route: wrap `<BridgeProvider>` around your whole app once, then wrap any route element that needs auth in `<ProtectedRoute>`.
+Wrap your app in `<BridgeProvider>` once at the root, then wrap any route element that needs auth in the `ProtectedRoute` component. `ProtectedRoute` handles the login redirect automatically.
 
-## Setup
+<Tabs>
+<TabItem label="main.tsx">
 
 ```tsx
 // src/main.tsx
 import { BridgeProvider } from '@nebulr-group/bridge-react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import App from './App';
 
-<BridgeProvider>
-  <App />
-</BridgeProvider>
+createRoot(document.getElementById('root')!).render(
+  <BridgeProvider appId={import.meta.env.VITE_BRIDGE_APP_ID}>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </BridgeProvider>
+);
 ```
 
-## Protecting a route
+</TabItem>
+<TabItem label="App.tsx">
 
 ```tsx
+// src/App.tsx
 import { ProtectedRoute } from '@nebulr-group/bridge-react';
-import { Routes, Route } from 'react-router-dom';
+import { Route, Routes } from 'react-router-dom';
 
 function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/auth/*" element={<AuthRoutes />} />
+      <Route path="/" element={<HomePage />} />
+      <Route path="/auth/login" element={<LoginPage />} />
       <Route
         path="/dashboard"
-        element={
+        element={(
           <ProtectedRoute>
-            <Dashboard />
+            <DashboardPage />
           </ProtectedRoute>
-        }
+        )}
       />
     </Routes>
   );
 }
 ```
 
-`<ProtectedRoute>` reads `useAuth()`. While `isLoading` is true it renders a loading placeholder. Once loading resolves, if the user is **not** authenticated it immediately calls `login()` — a hard redirect to Bridge's hosted login — and renders nothing. If the user **is** authenticated, it renders `children`.
+</TabItem>
+</Tabs>
 
-There's no in-app `loginRoute` fallback here: unlike bridge-svelte's guard, `<ProtectedRoute>` doesn't navigate to a local `/login` page first — it kicks off the hosted-login redirect directly. If you want an in-app login page instead, don't wrap that route in `<ProtectedRoute>`; build it with `<LoginForm />` (see [Email & password](/auth/ui/email-password/)) and gate access to it manually with `useAuth()`.
+**How it works:**
+
+| Piece | What it does |
+|--------|--------------|
+| `<ProtectedRoute>` | While auth state is loading it renders a loading placeholder. Once resolved, an unauthenticated user is sent to Bridge's hosted login page; an authenticated user sees the route's content. |
+| Public routes | Any route you don't wrap in `<ProtectedRoute>` is public. |
+| Router adapter | Bridge-driven redirects (the OAuth callback, the billing paywall) navigate through a `RouterAdapter`, so they use your router's client-side navigation instead of a full reload. |
+
+> **Framework note:** bridge-react has no declarative route rule engine (a `RouteGuardConfig` with `rules`, `defaultAccess`, per-rule `featureFlag`, and `billing` gates). Auth protection is per-route with `<ProtectedRoute>`, which always starts the hosted login flow rather than redirecting to an in-app `loginRoute`. Flag gating is wired manually (below).
 
 ## Wiring up a router adapter
 
-`<ProtectedRoute>` triggers a full-page redirect for login (via `window.location`), but other Bridge-driven redirects — the OAuth callback (`<CallbackHandler>`), the billing paywall redirect — go through a `RouterAdapter` so they can use your router's client-side navigation instead of a full page load. Without one, Bridge falls back to `window.location`, which still works but forces a full reload.
+Register a router adapter once in your root component so Bridge redirects can use client-side navigation. Without one, Bridge falls back to `window.location`, which still works but forces a full reload.
 
 ```tsx
-import { useNavigate } from 'react-router-dom';
-import { setRouterAdapter, createReactRouterAdapter } from '@nebulr-group/bridge-react';
+import { createReactRouterAdapter, setRouterAdapter } from '@nebulr-group/bridge-react';
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 function App() {
   const navigate = useNavigate();
@@ -68,7 +88,7 @@ function App() {
 }
 ```
 
-Pre-built adapters ship for the three most common routers — pick the one matching your app:
+Pre-built adapters ship for the three most common routers; pick the one matching your app:
 
 | Adapter | Router |
 |---------|--------|
@@ -78,33 +98,23 @@ Pre-built adapters ship for the three most common routers — pick the one match
 
 You can also implement `RouterAdapter` yourself (`navigate`, `replace`, `getCurrentPath`) for any other router, and call `setRouterAdapter()` with it.
 
-## Checking auth status
-
-Use `useAuth()` to check whether the user is authenticated, without triggering a redirect:
-
-```tsx
-import { useAuth } from '@nebulr-group/bridge-react';
-
-function NavBar() {
-  const { isAuthenticated, isLoading } = useAuth();
-
-  if (isLoading) return <p>Loading...</p>;
-  return isAuthenticated ? <UserMenu /> : <LoginButton />;
-}
-```
-
 ## Gating a route behind a feature flag
 
-There's no declarative rule for this (unlike bridge-svelte's `{ match: '/beta/*', featureFlag: 'beta-feature', redirectTo: '/' }`) — check the flag yourself inside the route and redirect manually:
+Check the flag inside the route and redirect manually:
 
 ```tsx
 import { useFlag } from '@nebulr-group/bridge-react/flags';
+import type { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 
-function BetaRoute({ children }: { children: React.ReactNode }) {
-  const { value } = useFlag('beta-feature', false);
+function BetaRoute({ children }: { children: ReactNode }) {
+  const { value } = useFlag('beta_feature', false);
   return value ? <>{children}</> : <Navigate to="/" replace />;
 }
 ```
 
-Wrap the flag-gated route in this component the same way you'd wrap it in `<ProtectedRoute>` (or nest both, if the route needs both auth and a flag).
+Wrap the flag-gated route in this component the same way you'd wrap it in `<ProtectedRoute>` (or nest both, if the route needs auth and a flag).
+
+## Billing gates
+
+Set `billing.paywallRoute` in the [config reference](/auth/config/#all-config-options) and `<BridgeProvider>` redirects an authenticated workspace that hasn't selected a plan there on load. Keep the paywall route itself public (outside `<ProtectedRoute>`'s hosted-login bounce) so the redirect target is reachable.

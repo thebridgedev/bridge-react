@@ -11,16 +11,16 @@ A drop-in panel for managing team members, team profile, and workspace settings.
 | `defaultTab` | `'users' \| 'profile' \| 'workspace'` | `'users'` | Which tab is active by default |
 | `showProfileTab` | `boolean` | `true` | Show the profile tab |
 | `showWorkspaceTab` | `boolean` | `true` | Show the workspace tab |
-| `onError` | `(error: Error) => void` | — | Called on any error |
-| `tabBar` | `(ctx: { tabs: { id: string; label: string }[]; activeTab: string; setTab: (id: string) => void }) => ReactNode` | — | Custom tab bar render function |
+| `onError` | `(error: Error) => void` | (none) | Called on any error |
+| `tabBar` | `({ tabs, activeTab, setTab }) => ReactNode` | (none) | Custom tab bar render prop |
 
 **Usage:**
 
 ```tsx
-// src/routes/settings/team.tsx
+// src/pages/TeamPage.tsx (rendered at /settings/team)
 import { TeamManagementPanel } from '@nebulr-group/bridge-react';
 
-export function TeamSettingsPage() {
+function TeamPage() {
   return (
     <TeamManagementPanel
       defaultTab="users"
@@ -33,8 +33,6 @@ export function TeamSettingsPage() {
 **Custom tab bar:**
 
 ```tsx
-import { TeamManagementPanel } from '@nebulr-group/bridge-react';
-
 <TeamManagementPanel
   tabBar={({ tabs, activeTab, setTab }) => (
     <nav className="custom-tabs">
@@ -53,33 +51,25 @@ import { TeamManagementPanel } from '@nebulr-group/bridge-react';
 ```
 
 The panel includes:
-- **Users tab** — list team members, invite new users, update roles, remove members.
-- **Profile tab** — update team name and other profile fields.
-- **Workspace tab** — update workspace settings.
+- **Users tab**: list team members, invite new users, update roles, remove members.
+- **Profile tab**: update team name and other profile fields.
+- **Workspace tab**: update workspace settings.
 
 ## Individual tab components
 
 Each tab is also exported as a standalone component. Use these when you only need one piece of team management, or want to build your own layout:
 
 ```tsx
-import { TeamUserList, TeamProfileForm, TeamWorkspaceForm } from '@nebulr-group/bridge-react';
+import { TeamProfileForm, TeamUserList, TeamWorkspaceForm } from '@nebulr-group/bridge-react';
 
-function CustomTeamLayout() {
-  return (
-    <>
-      {/* Just the user list */}
-      <TeamUserList onError={(err) => console.error(err)} />
+// Just the user list
+<TeamUserList onError={(err) => console.error(err)} />
 
-      {/* Just the profile form */}
-      <TeamProfileForm onError={(err) => console.error(err)} />
+// Just the profile form
+<TeamProfileForm onError={(err) => console.error(err)} />
 
-      {/* Just the workspace settings */}
-      <TeamWorkspaceForm onError={(err) => console.error(err)} />
-    </>
-  );
-}
+// Just the workspace settings
+<TeamWorkspaceForm onError={(err) => console.error(err)} />
 ```
 
 All three accept `className`, `style`, and `onError` props.
-
-`TeamUserList` also exports its supporting dialogs — `TeamAddUserDialog`, `TeamEditUserDialog`, `TeamConfirmDialog`, and `TeamUserActionsMenu` — for cases where you want to reuse the invite/edit/remove UI pieces individually rather than the whole list.
