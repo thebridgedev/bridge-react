@@ -215,6 +215,14 @@ export { BridgeProvider } from './providers/bridge-provider';
 
 // Types
 export type { Profile, TokenSet } from '@nebulr-group/bridge-auth-core';
+// Auth-core domain types re-exported for parity with bridge-svelte (billing
+// plans, price offers, SSO federation connections, tenant users).
+export type {
+  Plan,
+  PriceOfferSdk,
+  FederationConnection,
+  TenantUser,
+} from '@nebulr-group/bridge-auth-core';
 export type {
   TeamProfile,
   TeamProfileUpdateInput,
