@@ -54,6 +54,14 @@ interface BridgeStoreState {
   tenantUsers: TenantUser[];
   ready: boolean;
   subscription: SubscriptionState;
+  /**
+   * The consumer-configured in-app login route (`config.loginRoute`), captured
+   * at `initBridge()`. When set, `<ProtectedRoute>` navigates here via the
+   * router adapter (SDK mode) instead of launching the hosted auth portal.
+   * `null` = unset → hosted mode (default). Mirrors bridge-svelte's
+   * `getConfig().loginRoute` branch in BridgeBootstrap.
+   */
+  loginRoute: string | null;
 }
 
 export const useBridgeStore = create<BridgeStoreState>(() => ({
@@ -67,6 +75,7 @@ export const useBridgeStore = create<BridgeStoreState>(() => ({
   tenantUsers: [],
   ready: false,
   subscription: { status: null, plans: null, loading: false, error: null },
+  loginRoute: null,
 }));
 
 // ── Ready gate ─────────────────────────────────────────────────────────────────
@@ -104,6 +113,10 @@ export function initBridge(config: BridgeAuthConfig): BridgeAuth {
   useBridgeStore.setState({
     authState: _instance.getAuthState(),
     isLoading: false,
+    // Capture the in-app login route so <ProtectedRoute> can branch on it
+    // (SDK mode → in-app route; unset → hosted portal). `config` is private on
+    // BridgeAuth, so we snapshot the resolved value here at init time.
+    loginRoute: config.loginRoute ?? null,
   });
 
   // Wire auth-core events → Zustand store
@@ -262,5 +275,6 @@ export function _resetBridgeInstance(): void {
     tenantUsers: [],
     ready: false,
     subscription: { status: null, plans: null, loading: false, error: null },
+    loginRoute: null,
   });
 }
