@@ -152,8 +152,35 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
     }
   }
 
-  // Flush the realtime client + token subscription on provider unmount.
+  // Own the runtime's mounted lifetime: (re)start on mount, flush the realtime
+  // client + token subscriptions on unmount.
+  //
+  // The start above happens during render so children can read the singleton in
+  // their own effects — but render runs ONCE while effects can run many times.
+  // Under React 18/19 StrictMode the dev-only double-invoke simulates a full
+  // mount → unmount → remount on the same fiber: the cleanup below fires, but
+  // the component does NOT re-render, so `initedRef` still reads "initialized"
+  // and nothing would ever restart what the cleanup tore down. The result was a
+  // dev-only dead runtime — no realtime channel, no session.snapshot fanout, no
+  // live flag updates, no token-driven channel rescoping — for the whole page
+  // lifetime.
+  //
+  // So the effect re-asserts the runtime instead of assuming render did it.
+  // `startBridgeRuntime()` is idempotent and `flagsBundleRef` is nulled by the
+  // cleanup, so on a genuine first mount both calls below are no-ops, and on a
+  // StrictMode remount they rebuild exactly what was torn down.
   useEffect(() => {
+    if (!initedRef.current) return; // no appId — nothing was ever started
+
+    startBridgeRuntime();
+    if (!flagsBundleRef.current) {
+      try {
+        flagsBundleRef.current = createBridgeFlags();
+      } catch (err) {
+        logger.debug('[BridgeProvider] feature flags bootstrap skipped:', err);
+      }
+    }
+
     return () => {
       if (flagsBundleRef.current) {
         void flagsBundleRef.current.stop();
