@@ -1,138 +1,52 @@
 # Authentication
 
-How `@nebulr-group/bridge-react` represents auth state, exposes hooks, and protects routes.
+Bridge gives your React app a complete authentication system without you building one: sign-in flows (email and password, magic link, passkeys, Google and Azure AD SSO, MFA), signup, drop-in UI components for all of them, route protection, roles and privileges, multi-workspace support, and self-service API tokens. You configure what's enabled in Control Center (your admin dashboard at app.thebridge.dev) or the CLI; the SDK components pick it up automatically.
 
-## How it works
+## The mental model
 
-`<BridgeProvider>` initializes a singleton `BridgeAuth` (from `@nebulr-group/bridge-auth-core`) on mount. Auth-core emits events:
-- `auth:login` — when tokens are issued.
-- `auth:logout` — when tokens are cleared.
-- `auth:token-refreshed` — when refresh succeeds.
-- `auth:state-change` — when the state machine transitions (`unauthenticated` → `mfa-required` → `tenant-selection` → `authenticated`).
-- `auth:profile` — when the profile loads or updates.
-- `auth:workspace-changed` — when the user switches workspaces.
-- `auth:error` — on any auth error.
+Three ideas carry the whole section:
 
-These events update a Zustand store (`useBridgeStore`) which all the hooks read from.
+- **The `bridge` object.** One import that exposes the signed-in user and their workspace as reactive readables: `bridge.user` (id, email, role, tenantId) and `bridge.tenant.*` (the workspace; a workspace is called a *tenant* in the API). Read them with the `useBridgeReadable` hook and your UI stays current.
+- **Auth states.** A single `authState` value (from `useAuth()`) tracks where the user is in the login flow, from `'unauthenticated'` through steps like `'mfa-required'` and `'tenant-selection'` to `'authenticated'`. The drop-in `LoginForm` walks these states for you; you can also branch on them yourself. See [Auth states](/auth/user-token/auth-states/).
+- **The live channel.** A persistent realtime connection the SDK maintains. When a role, plan, or permission changes server-side, Bridge pushes the change down the channel and your components update in place, with no reload or polling. See [Live Updates](/live-updates/).
 
-React is a pure-browser (CSR) plugin — there is no server middleware. Tokens are stored in `localStorage` and route protection runs client-side via `<ProtectedRoute>`.
+Sessions are JWT-based: signing in stores a token set in `localStorage`, and Bridge refreshes it before expiry. Signing out erases the stored token. See [Logging in and logging out](/auth/user-token/logging-in-and-out/).
 
-## Hooks
+## Enabling sign-in methods
 
-### `useAuth()`
+Each method is a per-app setting, flipped on in Control Center or via the CLI:
 
-```tsx
-const { isAuthenticated, isLoading, error, login, logout } = useAuth();
-```
+- [Email & password](/auth/sign-in/email-password/) (on by default)
+- [Magic link](/auth/sign-in/magic-link/)
+- [Passkeys](/auth/sign-in/passkeys/)
+- [Google SSO](/auth/sign-in/google-sso/)
+- [Azure AD SSO](/auth/sign-in/azure-ad/)
+- [MFA / 2FA](/auth/sign-in/mfa/)
 
-- `isAuthenticated` — boolean, derived from token presence.
-- `isLoading` — `true` until bootstrap completes.
-- `login()` — redirects to hosted bridge auth.
-- `logout()` — clears tokens and resets state.
+## Drop-in UI components
 
-### `useProfile()`
+Every flow has a ready-made component, imported from `@nebulr-group/bridge-react`. They render inside your app with no external redirects, and all accept standard HTML attributes (`className`, `style`, `data-*`) alongside their own props.
 
-```tsx
-const { profile, isLoading, error, updateProfile, isOnboarded, hasMultiTenantAccess } = useProfile();
-```
+| Component(s) | What it does | Docs |
+|--------------|--------------|------|
+| `LoginForm` | Complete login form; handles forgot password, magic link, passkeys, MFA, and workspace selection inline | [Email & password](/auth/ui/email-password/) |
+| `SignupForm` | Signup with email, first name, and last name | [Signup](/auth/ui/signup/) |
+| `SsoButton` | Standalone SSO button, redirect or popup mode | [SSO login button](/auth/ui/google-sso/) |
+| `MagicLink` | Magic link request form | [Magic link](/auth/ui/magic-link/) |
+| `ForgotPassword` | Request and reset modes for password resets | [Forgot / reset password](/auth/ui/forgot-password/) |
+| `MfaChallenge`, `MfaSetup` | MFA code challenge and first-time setup | [MFA / 2FA](/auth/ui/mfa/) |
+| `PasskeyLogin`, `PasskeySetup`, `PasskeyRequestSetupLink` | Passkey (WebAuthn) login and registration | [Passkeys](/auth/ui/passkeys/) |
+| `TenantSelector`, `WorkspaceSelector` | Pick a workspace at login; switch workspaces later | [Switching workspaces](/auth/ui/switching-workspaces/) |
+| `TeamManagementPanel` | Invite users, change roles, edit workspace settings | [User & team management](/auth/ui/team-management/) |
+| `ApiTokenManagement` | Self-service API token management | [Tokens](/auth/ui/tokens/) |
 
-`profile` is the auth-core `Profile` type — has `fullName`, `email`, `username`, `onboarded`, `multiTenantAccess`, and an optional `tenant`. It updates automatically when auth-core fires `auth:profile`, `auth:login`, `auth:logout`, or `auth:workspace-changed`, so any component using `useProfile()` re-renders on workspace switch or re-login.
+## Protecting routes
 
-- `updateProfile()` — re-fetch the profile from auth-core; resolves with the `Profile` (or `null`).
-- `isOnboarded` / `hasMultiTenantAccess` — convenience booleans derived from the current profile.
+Wrap any route that needs auth in the `ProtectedRoute` component; anything you don't wrap stays public. Unauthenticated users are redirected to Bridge's hosted login page. See [Route guards](/auth/securing/route-guards/) and the [config reference](/auth/config/).
 
-## Route protection
+## Identity, roles, and workspaces
 
-React has no server middleware — protect routes client-side with `<ProtectedRoute>`:
-
-```tsx
-import { ProtectedRoute } from '@nebulr-group/bridge-react';
-import { Route, Routes } from 'react-router-dom';
-
-<Routes>
-  <Route
-    path="/*"
-    element={(
-      <ProtectedRoute>
-        <Routes>
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/profile" element={<ProfilePage />} />
-        </Routes>
-      </ProtectedRoute>
-    )}
-  />
-</Routes>
-```
-
-When `<ProtectedRoute>` blocks a request it navigates (via the router adapter) to the configured login route (default `/login`). Register the router adapter once in your root component so the plugin can navigate:
-
-```tsx
-import { setRouterAdapter } from '@nebulr-group/bridge-react';
-import { useNavigate } from 'react-router-dom';
-
-const navigate = useNavigate();
-setRouterAdapter({
-  navigate: (path, options) => navigate(path, { replace: options?.replace }),
-  replace: (path) => navigate(path, { replace: true }),
-  getCurrentPath: () => window.location.pathname,
-});
-```
-
-(Adapters for React Router, TanStack Router, and Wouter are exported as `createReactRouterAdapter`, `createTanStackRouterAdapter`, and `createWouterAdapter`.)
-
-## Accessing the profile
-
-```tsx
-import { useProfile } from '@nebulr-group/bridge-react';
-
-export function ProfileBadge() {
-  const { profile } = useProfile();
-  return <span>{profile?.fullName ?? profile?.email}</span>;
-}
-```
-
-For a simple display name, use `<ProfileName />` — it renders the current user's full name (falling back to email), and renders **nothing** when no profile is loaded:
-
-```tsx
-import { ProfileName } from '@nebulr-group/bridge-react';
-<ProfileName className="user-name" />
-```
-
-`<ProfileName>` reads the profile straight from the bridge store, so it stays in sync without any wiring of its own.
-
-## Authenticated API calls
-
-```tsx
-import { getBridgeAuth } from '@nebulr-group/bridge-react';
-
-export async function fetchUser() {
-  const token = await getBridgeAuth().getAccessToken();
-  const res = await fetch('https://your-api.example.com/me', {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return res.json();
-}
-```
-
-## Logout flow
-
-`logout()` clears localStorage, fires `auth:logout`, and resets all hooks to unauthenticated state. There's no redirect by default — navigate after it resolves:
-
-```tsx
-import { useNavigate } from 'react-router-dom';
-
-const navigate = useNavigate();
-const { logout } = useAuth();
-await logout();
-navigate('/');
-```
-
-## Common pitfalls
-
-- **`getBridgeAuth()` throws** if called before `<BridgeProvider>` has mounted. Always call it after mount (inside an effect or event handler).
-- **OAuth callback preserves `?payment=*`** by default so post-payment pages can read the result after login.
-- **Profile not populated yet.** The profile store is populated via `waitForBridge()` before any consumer reads it; treat `profile === undefined` as "still loading" and `null` as "no profile".
-
-## Environment variables
-
-`<BridgeProvider>` is configured by `VITE_BRIDGE_APP_ID` (the Vite env prefix). See the Configuration guide for the full list.
+- **Reading the user:** `bridge.user` for live identity claims, `useProfile()` for richer display fields, `useBridgeToken()` for the raw JWTs. See [Getting the user token](/auth/user-token/getting-the-token/) and [How the user token is updated](/auth/user-token/object-updates/).
+- **Roles and privileges:** every user has exactly one role per workspace; roles bundle privilege keys you define. See [How roles work](/auth/roles/how-it-works/), [Define roles](/auth/roles/define-roles/), [Assign roles](/auth/roles/assign-roles/), [Common setups](/auth/roles/common-setups/), [The owner role](/auth/roles/owner-role/), and [Gate features by role](/auth/roles/gate-with-flags/).
+- **Multi-workspace:** one set of credentials, many workspaces, with isolation enforced server-side. See [Multi-tenancy](/auth/multi-tenancy/).
+- **API tokens:** let your users mint privilege-scoped tokens for scripts and integrations. See [API tokens](/auth/api-tokens/).
