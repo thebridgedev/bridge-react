@@ -1,34 +1,20 @@
 # Bridge React — Feature Flags
 
-You are adding **Feature Flags 2.0** to a React (Vite / CRA) application that uses
-The Bridge. The goal is to ship code behind a switch you control from the Bridge
-dashboard — no redeploy needed.
+You are adding **Feature Flags** to a React application (Vite or CRA) that uses The Bridge. The goal is to ship code behind a switch you control from the Bridge dashboard — no redeploy needed.
 
-Bridge evaluates flags **locally in the SDK** against a cache of flag rules that
-syncs live from the Bridge API. The cache rides the same realtime channel as auth
-+ billing — toggling a flag in the dashboard updates the app **without a refresh**.
-Flags are auth-free: they evaluate for every visitor, logged in or not.
+## Prerequisites check
 
-## 1. Install
+Before starting, verify that Bridge is set up in this project:
 
-Use whatever package manager the project's lockfile says (npm shown):
+1. `@nebulr-group/bridge-react` is in `package.json` dependencies
+2. `src/main.tsx` (Vite) or `src/index.tsx` (CRA) wraps the app in `<BridgeProvider>`
+3. `VITE_BRIDGE_APP_ID` is set in `.env` — CRA projects use `REACT_APP_BRIDGE_APP_ID`
 
-```bash
-npm install @nebulr-group/bridge-react
-# or: yarn add @nebulr-group/bridge-react
-# or: pnpm add @nebulr-group/bridge-react
-```
+If any are missing, run `bridge guide react` first.
 
-The flag surface is exported from both the main entry `@nebulr-group/bridge-react`
-and the `@nebulr-group/bridge-react/flags` subpath. The subpath is the flags-only
-barrel — use it if you want to avoid pulling auth UI into the bundle. The snippets
-below import from the main entry to match the demo app.
+## Step 1 — Activate the flags layer
 
-## 2. Init — wrap your app in `<BridgeProvider>`
-
-`<BridgeProvider>` mounts the Bridge core runtime (realtime channel + the flag eval
-cache) on first render. There is no separate flags provider — importing/rendering
-the provider is all the wiring flags need.
+There is no separate flags package and no second provider. `<BridgeProvider>` mounts the whole Bridge core runtime — realtime channel, then the flag layer on top of it (local eval cache, hydration from the workspace, live updates on the same socket). Mounting the provider *is* the flag wiring.
 
 ```tsx
 // src/main.tsx
@@ -43,52 +29,53 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-`<BridgeProvider>` reads its `appId` from `VITE_BRIDGE_APP_ID` (Vite) or
-`REACT_APP_BRIDGE_APP_ID` (CRA) by default. You can also pass it explicitly:
+`<BridgeProvider>` reads its `appId` from `VITE_BRIDGE_APP_ID` / `REACT_APP_BRIDGE_APP_ID`; you can also pass it as a prop (`<BridgeProvider appId="…">`) — the env var wins if both are present. Init runs **synchronously during the provider's first render**, not in an effect, so any descendant may read a flag immediately.
 
-```tsx
-<BridgeProvider appId="your-app-id">
-  <App />
-</BridgeProvider>
-```
+Flags start evaluating for all visitors as soon as `<BridgeProvider>` mounts — login is not required.
 
-Flags start evaluating for all visitors as soon as `<BridgeProvider>` mounts —
-login is not required.
+The flag surface is exported from both the main entry and the `@nebulr-group/bridge-react/flags` subpath. They are the same API; use `/flags` if you want the flag-only barrel without the auth UI on the graph.
 
-## 3. First flag call
+## Step 2 — Create the demo component
 
-### Declarative — `<FeatureFlag>`
-
-> **Note:** React reserves the prop name `key`, so the flag key is passed as
-> `flagKey`. `children` renders when the flag is on; `fallback` when it is off.
-
-Create `src/components/FlagsDemo.tsx`. The flag is auto-created in Bridge as off
-the first time the component renders.
+Create `src/components/FlagsDemo.tsx` with the content below. It uses `FeatureFlag` to gate a visible box: grey with a striped border when the flag is off, solid green when it is on. The flag is auto-created in Bridge as off the first time the component renders.
 
 ```tsx
 // src/components/FlagsDemo.tsx
 import { FeatureFlag } from '@nebulr-group/bridge-react';
 
+const box: React.CSSProperties = {
+  margin: '2rem auto', padding: '2.5rem 2rem', borderRadius: 10, transition: 'background 0.4s ease',
+};
+const off: React.CSSProperties = {
+  ...box, color: '#555', border: '8px solid transparent',
+  background:
+    'linear-gradient(#f0f0f0, #f0f0f0) padding-box,' +
+    'repeating-linear-gradient(45deg, #aaa 0, #aaa 8px, transparent 8px, transparent 18px) border-box',
+};
+const on: React.CSSProperties = { ...box, background: '#d4edda', border: '4px solid #28a745', color: '#155724' };
+const hint: React.CSSProperties = { fontSize: '0.8rem', opacity: 0.65, marginTop: '0.5rem' };
+
 export function FlagsDemo() {
   return (
-    <div style={{ maxWidth: 480, margin: '4rem auto', textAlign: 'center' }}>
+    <div style={{ maxWidth: 480, margin: '4rem auto', fontFamily: 'sans-serif', textAlign: 'center' }}>
       <h1>Feature Flag Demo</h1>
-      <p>
-        Toggle <strong>demo-flag</strong> in the Bridge dashboard and watch this
-        box change — no refresh needed.
-      </p>
+      <p>Toggle <strong>demo-flag</strong> in the Bridge dashboard and watch this box change — no refresh needed.</p>
 
       <FeatureFlag
         flagKey="demo-flag"
         defaultValue={false}
         fallback={
-          <div style={{ padding: '2.5rem', background: '#f0f0f0', color: '#555', borderRadius: 10 }}>
-            This box turns green once you enable <strong>demo-flag</strong>.
+          <div style={off}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>⚑</div>
+            <p>This box will turn green once you enable <strong>demo-flag</strong></p>
+            <p style={hint}>Go to Feature Control in the Bridge dashboard and flip it on.</p>
           </div>
         }
       >
-        <div style={{ padding: '2.5rem', background: '#d4edda', color: '#155724', borderRadius: 10 }}>
-          <strong>demo-flag</strong> is <strong>enabled</strong>.
+        <div style={on}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✓</div>
+          <p><strong>demo-flag</strong> is <strong>enabled</strong></p>
+          <p style={hint}>Go to Feature Control in the Bridge dashboard to toggle it off again.</p>
         </div>
       </FeatureFlag>
     </div>
@@ -96,90 +83,134 @@ export function FlagsDemo() {
 }
 ```
 
-### Imperative — the `useFlag` hook
+**After creating the file, tell the user:**
 
-For branching in code, use the hook. It returns `{ value, passed }` and re-renders
-on every change to that flag:
+> I've created a feature flag demo component at `src/components/FlagsDemo.tsx`. Render `<FlagsDemo />` somewhere in your app and open it in the browser, then go to **Feature Control** in the Bridge dashboard and toggle **demo-flag** on — the box will turn green without a page refresh.
+
+## How `<FeatureFlag>` works
+
+| Prop | Type | Required | Description |
+|------|------|----------|-------------|
+| `flagKey` | `string` | yes | Flag key — auto-created in Bridge on first eval if it doesn't exist. Named `flagKey`, not `key`: React reserves `key` for reconciliation and never forwards it to a component |
+| `defaultValue` | `T` | yes | Value returned until the cache hydrates or if the flag doesn't exist |
+| `context` | `Partial<EvalContext>` | no | Per-call eval context — see *Eval context* below |
+| `children` | `ReactNode \| (value: T) => ReactNode` | no | Rendered when the flag is on (`passed: true`). As a render-prop it receives the typed flag value |
+| `fallback` | `ReactNode \| (value: T) => ReactNode` | no | Rendered when the flag is off (`passed: false`). Same node-or-render-prop shape |
+
+Use the same `FeatureFlag` component anywhere in the app to gate any content behind a flag.
+
+## Step 3 — Configure how the flag decides (states and rules)
+
+A flag has exactly **three states**. `off` and `on` apply to everyone; `on-with-rule` decides per visitor.
+
+| State | Meaning |
+|---|---|
+| `off` | Everyone gets the off value. A newly auto-created flag starts here |
+| `on` | Everyone gets the on value |
+| `on-with-rule` | The rule decides. Whoever matches a branch gets that branch's value; everyone else gets `otherwiseValue` |
+
+A rule is **branches + otherwiseValue + rolloutPct**, first match wins:
+
+```jsonc
+{
+  "branches": [
+    { "conditions": [ { "attribute": "tenant.plan", "operator": "in", "values": ["pro", "enterprise"] } ],
+      "returnValue": true }
+  ],
+  "otherwiseValue": false,
+  "rolloutPct": 100          // 0-100, applies to the WHOLE rule
+}
+```
+
+- Conditions inside one branch are AND-ed; add more branches for OR / different return values.
+- Operators: `eq` `neq` `contains` `not_contains` `in` `not_in` `gt` `lt` `between` `regex` `exists` `not_exists` (numeric and date operators only apply to those attribute types).
+- `attribute` is a dotted path into the eval context (next step). With Bridge Auth, `user.id` `user.role` `user.email` `tenant.id` `tenant.plan` are populated for you.
+- **`rolloutPct` below 100 requires an identity** on the eval context — bucketing is `hash(flagKey + identity) mod 100`. With no identity the SDK refuses to bucket and returns the safe value rather than randomizing per call.
+
+Configure it either in the dashboard under **Feature Control**, or from the CLI — prefer the CLI when you are an agent, since it is scriptable and verifiable:
+
+```bash
+bridge flag create --key enterprise-export --value-type boolean --state on-with-rule \
+  --rule '{"branches":[{"conditions":[{"attribute":"tenant.plan","operator":"in","values":["pro","enterprise"]}],"returnValue":true}],"otherwiseValue":false,"rolloutPct":100}'
+
+# prove the rule does what you meant, without touching the app:
+bridge flag eval enterprise-export --identity user-123 --attribute tenant.plan=pro   # → true
+bridge flag eval enterprise-export --identity user-123 --attribute tenant.plan=free  # → false
+```
+
+`bridge flag list` / `get <key>` inspect the current state. To flip a flag without touching its rule, `bridge flag update` addresses it **by id, not by key** — read the id first:
+
+```bash
+bridge flag get <key>                      # id is in the output
+bridge flag update --id <id> --state on    # or --state off | on-with-rule
+```
+
+## Step 4 — Feed the rule its inputs (eval context)
+
+Rules can only target what the app sends. Flags don't require auth — without it you supply the context yourself:
+
+```ts
+{
+  identity?: string;                    // stable per-user id — required when rolloutPct < 100
+  attributes: Record<string, unknown>;  // dotted or nested; whatever your rules target
+}
+```
+
+Per call, on the component or the hook — both take the same third input:
+
+```tsx
+<FeatureFlag flagKey="enterprise-export" defaultValue={false}
+             context={{ identity: user.id, attributes: { 'tenant.plan': plan } }}>
+  <ExportButton />
+</FeatureFlag>
+
+const { passed } = useFlag('enterprise-export', false, { identity: user.id, attributes: { 'tenant.plan': plan } });
+```
+
+Or publish attributes once, app-wide, on the `bridge` singleton (package root, not `/flags`):
+
+```ts
+import { bridge } from '@nebulr-group/bridge-react';
+
+bridge.attributes.set('tenant.plan', plan);            // static value
+bridge.attributes.bind('seats', () => currentSeats);   // live — re-read on every eval
+bridge.attributes.bindMany(() => ({ region, betaOptIn }));
+```
+
+Per-call context wins on key collision. **With Bridge Auth**, the signed-in user's role and plan flow in automatically (`user.role`, `tenant.plan`) — no wiring needed; the provider is registered at bootstrap.
+
+## Gating logic instead of markup
+
+`<FeatureFlag>` gates *markup*. When the flag decides **behavior or supplies a value** — which endpoint to call, a numeric limit to enforce, a `string`/`number`/JSON flag value you compute with — read it directly instead:
 
 ```tsx
 import { useFlag } from '@nebulr-group/bridge-react';
 
-export function ConditionalButton() {
-  const { passed } = useFlag('new-checkout', false);
-  if (!passed) return null;
-  return <button>Try the new checkout</button>;
-}
+const { value: limit } = useFlag('upload-limit', 5);   // { value, passed }, re-renders on change
 ```
 
-Non-boolean flags are typed from the default:
+`useFlag(key, defaultValue, context?)` returns `{ value, passed }` and is typed from `defaultValue` — `useFlag('pipeline_mode', 'stable')` gives a `string`, `useFlag('rate_limit', { window: 60 })` gives the JSON shape.
 
-```tsx
-const { value: maxUploads } = useFlag('max_uploads', 10);             // number
-const { value: mode }       = useFlag('pipeline_mode', 'stable');     // string
-const { value: limits }     = useFlag('rate_limit', { window: 60 });  // json
-```
+For anything this prompt doesn't cover — the imperative `flagStore` for non-component code, realtime status, route guards — read `learning/feature-flags/feature-flags.md` in this repo rather than guessing an API.
 
-**After creating the file, tell the user:**
+> Flags evaluate **client-side** in React today. There is no server-side evaluation in this SDK — this package ships a browser runtime only, so don't try to read a flag outside the browser.
 
-> I've added a feature flag demo. Render `<FlagsDemo />` somewhere in your app,
-> open it in the browser, then go to **Feature Control** in the Bridge dashboard
-> and toggle **demo-flag** on — the box turns green without a page refresh.
+## Troubleshooting
 
-## 4. Where to put eval context
+Flag not appearing in the dashboard within ~30s, or a read returns the default forever:
 
-Flags don't require auth. But if you have your own user model, pass an eval context
-so rules can target it. Both the component and the hook accept a `context` for
-per-call attributes:
+- **`<BridgeProvider>` mounted and `appId` resolved.** The flag layer bootstraps inside the provider's first render; with no `appId` the provider logs `[BridgeProvider] No appId provided` and inits nothing. Confirm `VITE_BRIDGE_APP_ID` / `REACT_APP_BRIDGE_APP_ID`, or the `appId` prop.
+- **One provider, at the root, never unmounted.** Its unmount cleanup stops the flag bundle and the realtime runtime; init is guarded per provider instance, so a torn-down provider does not come back.
+- **Read the flag inside a component.** `useFlag` / `<FeatureFlag>` are the reactive path. Calling `evaluateFlag` at module scope, before the provider has rendered, returns the default.
+- **A flag registers only once it has been evaluated** — render something that actually reads the key.
+- **Rule never matches?** Run `bridge flag eval <key> --identity … --attribute k=v` to see the verdict without the app in the way, then confirm the app sends those same attributes.
+- **`rolloutPct < 100` with no identity** returns the safe value by design.
+- **Realtime.** Live toggles ride the realtime channel; if a proxy blocks WebSockets the value still resolves on next load, just not instantly.
+- **First-render flicker is expected** — flags hydrate async. Set `defaultValue` to the safe-off state.
 
-```tsx
-const { passed } = useFlag('enterprise-feature', false, {
-  identity: user.id,                 // stable per-user id — required for % rollouts
-  attributes: { plan: user.plan },   // anything your rules target on
-});
+## Verify
 
-<FeatureFlag flagKey="enterprise-feature" defaultValue={false} context={{ attributes: { plan } }}>
-  {() => <Enterprise />}
-</FeatureFlag>
-```
-
-Per-call attributes win on key collision over Bridge-managed providers. For app-wide
-attributes you'd otherwise thread through every call, set them once on the singleton:
-`bridge.attributes.set(...)` / `bridge.attributes.bindMany(...)`.
-
-> **Percentage rollouts need `identity`.** If a rule rolls out to a percentage and no
-> identity is on the context, the SDK refuses to bucket and returns the safe default —
-> it never randomizes per call.
-
-## 5. What to expect in the dashboard
-
-The first time any flag key is evaluated, Bridge **auto-creates it as off** and it
-appears at **app.thebridge.dev/flags** (Feature Control). From there you flip it on,
-set an `on-with-rule` rule (target by attribute, percentage rollout), or change its
-value live. Connected clients pick up the change over the realtime channel within
-seconds — no redeploy, no refresh.
-
-## 6. Standalone vs full-platform
-
-- **Standalone flags:** pass your own `{ identity, attributes }` as shown above.
-- **With Bridge Auth:** if the app also uses Bridge Auth (same `<BridgeProvider>`),
-  the signed-in user's `role` and `plan` merge into the eval context automatically
-  via the auth attribute provider — your rules can target `user.role` / `tenant.plan`
-  with no extra wiring.
-
-## 7. Troubleshooting
-
-Flag not showing in the dashboard within ~30s, or `useFlag` returns the default
-forever:
-
-- **API key / appId.** Confirm `VITE_BRIDGE_APP_ID` (or `REACT_APP_BRIDGE_APP_ID`) is
-  set, or that you passed `appId` to `<BridgeProvider>`. A flag is only registered
-  once it's been evaluated for a real workspace.
-- **Provider above the component.** `useFlag` / `<FeatureFlag>` must render under
-  `<BridgeProvider>`. If they're outside the tree, every read returns the default.
-- **SDK initialized before first read.** `<BridgeProvider>` inits synchronously on
-  first render, so any child is fine. Reading a flag at module scope (before any
-  render) returns the default until the cache hydrates.
-- **Realtime / live channel.** Live toggles ride the realtime channel; if a corporate
-  proxy blocks WebSockets the value still resolves on next load, just not instantly.
-- **First-render flicker is expected** — flags hydrate async. Set `defaultValue` to a
-  safe-off state, or render a skeleton until `passed` settles.
+1. Render `<FlagsDemo />` and open it in the browser. The grey striped box should appear — Bridge auto-creates `demo-flag` as off.
+2. Go to **Feature Control** in the Bridge dashboard and toggle `demo-flag` on (or take the id from `bridge flag get demo-flag` and run `bridge flag update --id <id> --state on`).
+3. The box turns green **without a page refresh** — realtime updates are on by default.
+4. Toggle it off again to confirm it reverts.

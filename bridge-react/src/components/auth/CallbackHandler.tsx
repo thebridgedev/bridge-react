@@ -71,20 +71,13 @@ export function CallbackHandler({
         // reads shouldSelectPlan:false, then redirect. Mirrors bridge-svelte's
         // BridgeBootstrap callback handling.
         if (stripeSuccess && sessionId) {
+          // confirmStripeCheckout (auth-core) verifies the session with bridge-api
+          // (which calls Stripe server-side) and refreshes tokens so the new JWT
+          // reads shouldSelectPlan:false. It throws on a non-OK response or network
+          // error → caught below → paymentErrorRoute. (TBP-369: shared with
+          // bridge-svelte so the HTTP + token-refresh logic lives in one place.)
           const bridge = getBridgeAuth();
-          const ctx = bridge.getApiContext();
-          const res = await fetch(`${ctx.apiBaseUrl}/v1/account/stripe/confirm-checkout`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {}),
-            },
-            body: JSON.stringify({ sessionId, appId: ctx.appId }),
-          });
-          if (!res.ok) {
-            return redirect(paymentErrorRoute);
-          }
-          await bridge.refreshTokens();
+          await bridge.confirmStripeCheckout(sessionId);
           // Refresh the global subscription store so the destination page
           // (e.g. PlanSelector on /subscription) renders the now-active plan
           // instead of stale "select a plan" state.

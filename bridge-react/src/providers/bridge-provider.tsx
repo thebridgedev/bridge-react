@@ -1,6 +1,6 @@
 import { FC, ReactNode, useEffect, useRef } from 'react';
 import { BridgeConfig } from '../types/config';
-import { ensureAppConfig, getBridgeAuth, initBridge, markReady } from '../core/bridge-instance';
+import { ensureAppConfig, getBridgeAuth, initBridge, markReady, setBridgeConfig } from '../core/bridge-instance';
 import { startBridgeRuntime, stopBridgeRuntime } from '../core/bridge-runtime';
 import { createBridgeFlags, type BridgeFlagsBundle } from '../flags/bootstrap';
 import { getRouterAdapter } from '../utils/router-adapter';
@@ -125,6 +125,11 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
       }
 
       initBridge(authConfig);
+      // Capture the resolved config so components can read runtime-only
+      // fields (e.g. `billing.manageRoute`) via `getBridgeConfig()`. The
+      // merged auth config carries the BridgeConfig prop fields through
+      // buildAuthConfig's `...fromProps` spread.
+      setBridgeConfig(authConfig);
       markReady();
       // Mount the core Bridge runtime (realtime channel + session.snapshot
       // fanout + dev-attribute provider). Idempotent; reads appId/apiBaseUrl
@@ -147,8 +152,35 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
     }
   }
 
-  // Flush the realtime client + token subscription on provider unmount.
+  // Own the runtime's mounted lifetime: (re)start on mount, flush the realtime
+  // client + token subscriptions on unmount.
+  //
+  // The start above happens during render so children can read the singleton in
+  // their own effects — but render runs ONCE while effects can run many times.
+  // Under React 18/19 StrictMode the dev-only double-invoke simulates a full
+  // mount → unmount → remount on the same fiber: the cleanup below fires, but
+  // the component does NOT re-render, so `initedRef` still reads "initialized"
+  // and nothing would ever restart what the cleanup tore down. The result was a
+  // dev-only dead runtime — no realtime channel, no session.snapshot fanout, no
+  // live flag updates, no token-driven channel rescoping — for the whole page
+  // lifetime.
+  //
+  // So the effect re-asserts the runtime instead of assuming render did it.
+  // `startBridgeRuntime()` is idempotent and `flagsBundleRef` is nulled by the
+  // cleanup, so on a genuine first mount both calls below are no-ops, and on a
+  // StrictMode remount they rebuild exactly what was torn down.
   useEffect(() => {
+    if (!initedRef.current) return; // no appId — nothing was ever started
+
+    startBridgeRuntime();
+    if (!flagsBundleRef.current) {
+      try {
+        flagsBundleRef.current = createBridgeFlags();
+      } catch (err) {
+        logger.debug('[BridgeProvider] feature flags bootstrap skipped:', err);
+      }
+    }
+
     return () => {
       if (flagsBundleRef.current) {
         void flagsBundleRef.current.stop();
@@ -202,10 +234,13 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
     void (async () => {
       try {
         const bridge = getBridgeAuth();
-        if (!bridge.isAuthenticated()) return;
-        const status = await bridge.getSubscriptionStatus();
+        // shouldRedirectToPaywall (auth-core) bundles the auth check + subscription
+        // status fetch + the shouldSelectPlan/paymentsAutoRedirect decision (TBP-369),
+        // shared with bridge-svelte/nextjs/angular. getSubscriptionStatus() still
+        // self-heals after a Stripe round-trip, so a freshly-paid user isn't bounced.
+        const should = await bridge.shouldRedirectToPaywall();
         if (cancelled) return;
-        if (status?.shouldSelectPlan === true && status?.paymentsAutoRedirect !== false) {
+        if (should) {
           logger.debug('[BridgeProvider] paywall redirect', paywallRoute);
           getRouterAdapter().replace(paywallRoute);
         }
