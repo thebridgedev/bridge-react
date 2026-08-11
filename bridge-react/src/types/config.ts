@@ -94,6 +94,12 @@ export interface BridgeConfig {
      * Defaults to `/payment-error`.
      */
     paymentErrorRoute?: string;
+    /**
+     * Route where your plan/billing management page lives — the default
+     * destination of the Upgrade/Manage CTA in `<BridgeQuotaBanner>` and
+     * `<BridgeBillingNotice>`. Defaults to `/billing`.
+     */
+    manageRoute?: string;
   };
 }
 

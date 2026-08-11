@@ -16,6 +16,7 @@ import { BridgeQuotaBanner } from '@nebulr-group/bridge-react';
 | `label` | `string` | metric key | Humanized display label |
 | `className` | `string` | `''` | Class applied to the root element |
 | `onActionClick` | `(snap) => void` | (none) | Override the default Upgrade CTA handler |
+| `actionHref` | `string` | — | Upgrade CTA destination for this instance; falls back to `billing.manageRoute` config, then `/billing` |
 
 ## Reading quota state yourself
 

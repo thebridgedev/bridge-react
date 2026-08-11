@@ -17,11 +17,14 @@
     "test:e2e:prod": "bun run e2e/playwright/pre-setup.ts test.prod && PLAYWRIGHT_PROJECT_NAME=prod bunx playwright test --project=prod",
     "test:e2e:headed": "rm -rf node_modules/.bun 2>/dev/null; bun run e2e/playwright/pre-setup.ts test.local && PLAYWRIGHT_PROJECT_NAME=local PLAYWRIGHT_HEADED=true bunx playwright test --project=local",
     "test:e2e:report": "bunx playwright show-report test-reports/playwright-report",
+    "test": "bun test test/",
     "test:install": "bash scripts/test-install.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2",
+    "@types/jsdom": "^21.1.7",
     "dotenv": "^16.0.0",
+    "jsdom": "^26.1.0",
     "tsx": "^4.19.0"
   },
   "packageManager": "bun@1.1.22",
