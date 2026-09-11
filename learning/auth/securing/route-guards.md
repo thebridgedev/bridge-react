@@ -66,7 +66,83 @@ function App() {
 | Public routes | Any route you don't wrap in `<ProtectedRoute>` is public. |
 | Router adapter | Bridge-driven redirects (the OAuth callback, the billing paywall) navigate through a `RouterAdapter`, so they use your router's client-side navigation instead of a full reload. |
 
-> **Framework note:** bridge-react has no declarative route rule engine (a `RouteGuardConfig` with `rules`, `defaultAccess`, per-rule `featureFlag`, and `billing` gates). Auth protection is per-route with `<ProtectedRoute>`, which always starts the hosted login flow rather than redirecting to an in-app `loginRoute`. Flag gating is wired manually (below).
+> **Framework note:** bridge-react has no declarative route rule engine (a `RouteGuardConfig` with `rules`, `defaultAccess`, per-rule `featureFlag`, and `billing` gates). Auth protection is per-route with `<ProtectedRoute>`. Flag gating is wired manually (below).
+
+## Returning to the page they asked for
+
+Someone who follows a link into a protected page — an emailed document link, a
+bookmark, a shared URL — lands on that page after signing in, not on your
+default route. This is on by default; you do not configure anything to get it.
+
+How the target travels depends on which login you use:
+
+| Mode | Mechanism | Your job |
+|------|-----------|----------|
+| **Hosted** (no `loginRoute`) | Held in `sessionStorage` across the OAuth round-trip | Nothing. `<CallbackHandler>` restores it |
+| **SDK** (you set `loginRoute`) | `?redirectUri=` on your own login route | Read it after login — below |
+
+### SDK mode: read it on your login page
+
+Your login page owns the post-login navigation, so it has to read the target.
+Use `readReturnTo` — it validates the value for you:
+
+```tsx
+import { LoginForm, readReturnTo } from '@nebulr-group/bridge-react';
+import { useNavigate } from 'react-router-dom';
+
+function LoginPage() {
+  const navigate = useNavigate();
+
+  return (
+    <LoginForm
+      onLogin={() => {
+        // Falls back to your own default when there is no target, or when the
+        // one supplied is not safe to navigate to.
+        navigate(readReturnTo(window.location.search) ?? '/dashboard');
+      }}
+    />
+  );
+}
+```
+
+:::caution[Do not read the parameter yourself]
+`?redirectUri=` arrives in the URL, so **whoever wrote the link controls it**.
+Navigating to it unchecked is an open redirect: a link carrying
+`?redirectUri=https://example.invalid` would bounce your users off-site, still
+looking like it came from you. Phishing works well from there.
+
+`readReturnTo` rejects anything that is not a same-origin path — absolute URLs,
+protocol-relative `//host`, backslash variants, and control characters — and
+returns `null` instead, which is why the `??` fallback above is all you need.
+If you must handle the value yourself, run it through `sanitizeReturnTo` first.
+:::
+
+### Keeping auth routes out of it
+
+Your `loginRoute` is excluded automatically, so a bounce through the login page
+never comes back pointing at itself. Exclude the rest of your auth flow too:
+
+```tsx
+<BridgeProvider
+  config={{
+    appId: '…',
+    loginRoute: '/auth/login',
+    returnTo: { exclude: [new RegExp('^/auth($|/)')] },
+  }}
+>
+```
+
+### Turning it off
+
+To send every login to the same place regardless of where the visitor was
+heading:
+
+```tsx
+returnTo: { enabled: false }
+```
+
+A path that fails validation is treated the same way: your login page gets
+`null` and falls back to its own default.
 
 ## Wiring up a router adapter
 

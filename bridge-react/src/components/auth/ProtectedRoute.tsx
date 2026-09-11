@@ -2,6 +2,8 @@ import { ReactNode, useEffect } from 'react';
 import { useAuth } from '../../hooks/use-auth';
 import { useBridgeStore } from '../../core/bridge-instance';
 import { getRouterAdapter } from '../../utils/router-adapter';
+import { currentAttemptedPath, resolveReturnTo, returnToParam } from '../../utils/return-to';
+import { stashReturnTo, withReturnTo } from '@nebulr-group/bridge-auth-core';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -57,12 +59,29 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   useEffect(() => {
     if (isLoading || isAuthenticated) return;
 
+    // TBP-629 — carry the page they actually asked for through the login, so a
+    // deep link does not collapse to the app's default route. `null` when there
+    // is nothing safe or worth carrying, and every call below tolerates null by
+    // behaving exactly as it did before this existed.
+    const returnTo = resolveReturnTo(currentAttemptedPath());
+
     if (loginRoute) {
       // SDK mode: consumer set loginRoute → navigate to the in-app login view
-      // using the same router adapter the rest of the SDK uses.
-      getRouterAdapter().navigate(loginRoute);
+      // using the same router adapter the rest of the SDK uses. The target rides
+      // as a query parameter because the login page is ours to read, and because
+      // a parameter survives a cross-tab click — which is the emailed-link case
+      // that prompted this.
+      getRouterAdapter().navigate(withReturnTo(loginRoute, returnTo, returnToParam()));
     } else {
       // Hosted mode (default): no loginRoute → launch the hosted auth portal.
+      //
+      // Here the target CANNOT ride on the URL. `createLoginUrl()` feeds
+      // `redirectUri` to the OAuth authorize call and bridge-api validates it
+      // with an exact `allowedRedirectUris.includes()` match, so appending a
+      // query would break login rather than improve it. Stash it instead;
+      // <CallbackHandler> picks it up when the round-trip lands back on our
+      // origin, in the same tab that wrote it.
+      stashReturnTo(returnTo);
       login();
     }
   }, [isAuthenticated, isLoading, login, loginRoute]);

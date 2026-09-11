@@ -76,7 +76,9 @@ One option points the SDK at Bridge itself. You only change it if you're on a de
 
 If you leave `loginRoute` unset, Bridge uses hosted auth: unauthenticated users who hit a protected route are redirected to Bridge's hosted login page. Unset is the default, so hosted login is what you get out of the box.
 
-> **Framework note:** bridge-react's `<ProtectedRoute>` always starts the hosted login flow; it does not redirect to an in-app `loginRoute`. To use an in-app login page built with [`LoginForm`](/auth/ui/email-password/), leave that route public and link to it yourself. The `loginRoute` field is still declared on `BridgeConfig`, and `<CallbackHandler>` takes its own `loginRoute` prop as the error redirect.
+Set `loginRoute` and `<ProtectedRoute>` sends unauthenticated users to that in-app route instead — SDK mode. Build the page with [`LoginForm`](/auth/ui/email-password/) and leave the route itself public. Either way the page they were heading for is remembered and restored after login; see [Route guards](/auth/securing/route-guards/#returning-to-the-page-they-asked-for).
+
+`<CallbackHandler>` takes its own `loginRoute` prop, used as the error redirect.
 
 ## All config options
 
@@ -85,10 +87,47 @@ If you leave `loginRoute` unset, Bridge uses hosted auth: unauthenticated users 
 | `appId` | `string` | (required) | Your Bridge app ID, found in your app's settings in Control Center |
 | `callbackUrl` | `string` | `${origin}/auth/oauth-callback` | Where the login flow redirects back to after a successful login. See [Callback URL](#callback-url) |
 | `defaultRedirectRoute` | `string` | `'/'` | Route to redirect to after login |
-| `loginRoute` | `string` | (unset) | In-app route of your login page. Not used for route protection in bridge-react; see [Login route](#login-route) |
+| `loginRoute` | `string` | (unset) | In-app route of your login page. Set it for SDK mode; leave unset for hosted login. See [Login route](#login-route) |
+| `locale` | `string` | `'en'` | UI language for the SDK auth components, e.g. `'sv'`. Region variants (`'sv-SE'`) resolve to their base language; an unknown locale falls back to English |
+| `messages` | `MessageOverrides` | (none) | Per-key copy overrides applied on top of the locale. See [Translating the auth UI](#translating-the-auth-ui) |
+| `returnTo.enabled` | `boolean` | `true` | Set `false` to send every login to `defaultRedirectRoute` regardless of where the visitor was heading |
+| `returnTo.param` | `string` | `'redirectUri'` | Query parameter carrying the return target in SDK mode |
+| `returnTo.exclude` | `(string \| RegExp)[]` | `[]` | Paths that must never become a return target. Your `loginRoute` is excluded automatically |
 | `billing.paywallRoute` | `string` | (none) | Route to redirect to when the workspace (called a *tenant* in the API) has no plan selected |
 | `billing.paymentErrorRoute` | `string` | `'/payment-error'` | Route to redirect to when a Stripe checkout confirmation fails |
 | `debug` | `boolean` | `false` | Enable debug logging |
+
+## Translating the auth UI
+
+The SDK auth components ship their own copy — field labels, buttons, alerts,
+success messages. Set `locale` once and all of it renders in that language:
+
+```tsx
+<BridgeProvider config={{ appId: '…', locale: 'sv' }}>
+```
+
+Bridge owns the **mechanics**: what a field is, what a button does, what went
+wrong. Your app owns **voice and context**: the page title, the subtitle,
+anything naming your product. Bridge cannot know those, which is why every
+component takes `heading={null}` and `description={null}` so you can write your
+own — see [Route guards](/auth/securing/route-guards/).
+
+Shipping locales: **`en`** and **`sv`**. An unknown locale falls back to English
+rather than throwing, and a key missing from a locale falls back to English —
+a raw key like `login.submit` never renders.
+
+For a phrase you need worded differently, override it per key:
+
+```tsx
+// app-wide
+<BridgeProvider config={{ appId: '…', locale: 'sv', messages: { 'login.submit': 'Logga in nu' } }}>
+
+// or one screen only
+<LoginForm messages={{ 'login.heading': 'Welcome back' }} />
+```
+
+Precedence is component prop → config `messages` → `locale` → English. The
+override path also covers any language Bridge does not ship yet.
 
 ## Passing values via .env
 

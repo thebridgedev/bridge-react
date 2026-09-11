@@ -244,3 +244,23 @@ export { TeamService } from '@nebulr-group/bridge-auth-core';
 // API-token service re-exported from auth-core (powers <ApiTokenManagement />).
 export { ApiTokenService, type ApiToken, type CreateApiTokenInput } from '@nebulr-group/bridge-auth-core';
 
+
+// ── Deep-link preservation (TBP-629) ─────────────────────────────────────────
+// Re-exported from auth-core so a React login page can import the reader (and
+// its open-redirect validation) from the same package it already depends on,
+// instead of reaching past bridge-react.
+export {
+  DEFAULT_RETURN_TO_PARAM,
+  readReturnTo,
+  sanitizeReturnTo,
+  withReturnTo,
+} from '@nebulr-group/bridge-auth-core';
+export type { ReturnToConfig } from '@nebulr-group/bridge-auth-core';
+
+// ── SDK auth copy / translations (TBP-630) ───────────────────────────────────
+// The catalogue lives in auth-core so a translation fixed once is fixed in every
+// framework package. `getTranslator` is bridge-react's binding of it to
+// BridgeConfig; apps normally set `locale` on the provider and never call it.
+export { getTranslator } from './i18n';
+export { createTranslator, en, sv, LOCALES, hasLocale, normalizeLocale, interpolate } from '@nebulr-group/bridge-auth-core';
+export type { MessageKey, MessageOverrides, Messages, Translator } from '@nebulr-group/bridge-auth-core';

@@ -65,7 +65,13 @@ describe('ProtectedRoute redirect target (TBP-478)', () => {
     await waitFor(() => {
       expect(navigateSpy).toHaveBeenCalledTimes(1);
     });
-    expect(navigateSpy).toHaveBeenCalledWith('/sign-in');
+    // TBP-629 changed this destination deliberately: the login URL now carries
+    // the page the visitor was turned away from (`getCurrentPath()` above is
+    // '/protected'), so a deep link survives the sign-in. The assertion stays
+    // exact rather than relaxing to a prefix match — what TBP-478 guards is the
+    // destination, and a prefix match would pass for a target that had silently
+    // lost its return value.
+    expect(navigateSpy).toHaveBeenCalledWith('/sign-in?redirectUri=%2Fprotected');
     // Hosted portal must NOT be used.
     expect(window.location.href).toBe(originalHref);
   });

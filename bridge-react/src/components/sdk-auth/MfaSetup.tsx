@@ -1,6 +1,8 @@
 import type { HTMLAttributes } from 'react';
 import { useEffect, useState } from 'react';
+import type { MessageKey, MessageOverrides } from '@nebulr-group/bridge-auth-core';
 import { getBridgeAuth } from '../../core/bridge-instance';
+import { getTranslator } from '../../i18n';
 import { AuthFormWrapper } from './shared/AuthFormWrapper';
 import { Alert } from './shared/Alert';
 import { Spinner } from './shared/Spinner';
@@ -8,9 +10,41 @@ import { Spinner } from './shared/Spinner';
 interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'onError'> {
   onComplete?: () => void;
   onError?: (error: Error) => void;
+  /** Heading text. Pass `null`/`''` to render no heading and use your own page title. */
+  heading?: string | null;
+  /**
+   * Step description. Pass `null`/`''` to render nothing and use your own
+   * subtitle (TBP-631).
+   *
+   * This component has THREE steps, each with its own description, but one
+   * wrapper — so an override replaces whichever description is showing.
+   */
+  description?: string | null;
+  /** Per-key copy overrides for this component only (TBP-630). */
+  messages?: MessageOverrides;
 }
 
-export function MfaSetup({ onComplete, onError, className, style, ...rest }: Props) {
+// TBP-631 — the three step descriptions used to sit inline in the markup,
+// outside AuthFormWrapper's heading guard, so `heading={null}` could not reach
+// them. They live in one wrapper rather than three, so the wrapper cannot know
+// the step — the component computes it and hands over the resolved value.
+const STEP_DESCRIPTION_KEYS: Record<'phone' | 'verify' | 'backup', MessageKey> = {
+  phone: 'mfaSetup.phoneDescription',
+  verify: 'mfaSetup.verifyDescription',
+  backup: 'mfaSetup.backupDescription',
+};
+
+export function MfaSetup({
+  onComplete,
+  onError,
+  heading,
+  description,
+  messages,
+  className,
+  style,
+  ...rest
+}: Props) {
+  const t = getTranslator(messages);
   const [step, setStep] = useState<'phone' | 'verify' | 'backup'>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
@@ -19,6 +53,11 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(0);
+
+  const wrapperHeading = heading !== undefined ? heading : t('mfaSetup.heading');
+  // `undefined` = not overridden (use the built-in); `null` = host suppressed it.
+  const wrapperDescription =
+    description !== undefined ? description : t(STEP_DESCRIPTION_KEYS[step]);
 
   useEffect(() => {
     if (resendCountdown <= 0) return;
@@ -36,7 +75,7 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
       setStep('verify');
       setResendCountdown(60);
     } catch (err: any) {
-      setError(err.message || 'Failed to send verification code.');
+      setError(err.message || t('mfaSetup.error.sendCode'));
       onError?.(err);
     } finally {
       setLoading(false);
@@ -52,7 +91,7 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
       setCode('');
       setResendCountdown(60);
     } catch (err: any) {
-      setError(err.message || 'Failed to resend verification code.');
+      setError(err.message || t('mfaSetup.error.resend'));
       onError?.(err);
     } finally {
       setLoading(false);
@@ -69,7 +108,7 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
       setBackupCode(result.backupCode ?? null);
       setStep('backup');
     } catch (err: any) {
-      setError(err.message || 'Invalid code. Please try again.');
+      setError(err.message || t('mfa.error.invalidCode'));
       onError?.(err);
     } finally {
       setLoading(false);
@@ -90,7 +129,8 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
 
   return (
     <AuthFormWrapper
-      heading="Set up two-factor authentication"
+      heading={wrapperHeading}
+      description={wrapperDescription}
       className={className}
       style={style}
       {...rest}
@@ -98,45 +138,39 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
       {error && <Alert variant="error">{error}</Alert>}
 
       {step === 'phone' && (
-        <>
-          <p className="bridge-step-desc">
-            Enter your phone number to receive a verification code via SMS.
-          </p>
-          <form onSubmit={handleSendCode}>
-            <div className="bridge-form-group">
-              <label htmlFor="mfa-phone">Phone number</label>
-              <input
-                id="mfa-phone"
-                type="tel"
-                placeholder="+1 (555) 000-0000"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-            <button
-              type="submit"
-              className="bridge-btn bridge-btn-primary"
-              disabled={loading || !phoneNumber.trim()}
-            >
-              {loading ? <Spinner size={16} /> : 'Send code'}
-            </button>
-          </form>
-        </>
+        <form onSubmit={handleSendCode}>
+          <div className="bridge-form-group">
+            <label htmlFor="mfa-phone">{t('field.phoneNumber')}</label>
+            <input
+              id="mfa-phone"
+              type="tel"
+              placeholder={t('placeholder.phoneNumber')}
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              disabled={loading}
+            />
+          </div>
+          <button
+            type="submit"
+            className="bridge-btn bridge-btn-primary"
+            disabled={loading || !phoneNumber.trim()}
+          >
+            {loading ? <Spinner size={16} /> : t('mfaSetup.sendCode')}
+          </button>
+        </form>
       )}
 
       {step === 'verify' && (
         <>
-          <p className="bridge-step-desc">Enter the 6-digit code sent to your phone.</p>
           <form onSubmit={handleVerifyCode}>
             <div className="bridge-form-group">
-              <label htmlFor="mfa-verify-code">Verification code</label>
+              <label htmlFor="mfa-verify-code">{t('field.verificationCode')}</label>
               <input
                 id="mfa-verify-code"
                 type="text"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                placeholder="Enter 6-digit code"
+                placeholder={t('placeholder.sixDigitCode')}
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -148,22 +182,22 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
               className="bridge-btn bridge-btn-primary"
               disabled={loading || code.length < 6}
             >
-              {loading ? <Spinner size={16} /> : 'Verify'}
+              {loading ? <Spinner size={16} /> : t('mfaSetup.verify')}
             </button>
           </form>
           <p className="bridge-mfa-help">
             {resendCountdown > 0 ? (
-              `Didn't get your text message? You can resend in ${resendCountdown}s.`
+              t('mfa.resendCountdown', { seconds: resendCountdown })
             ) : (
               <>
-                Didn't get your text message?{' '}
+                {t('mfa.resendPrompt')}{' '}
                 <button
                   type="button"
                   className="bridge-link"
                   onClick={handleResendCode}
                   disabled={loading}
                 >
-                  Resend code
+                  {t('action.resendCode')}
                 </button>
                 .
               </>
@@ -179,18 +213,14 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
               setResendCountdown(0);
             }}
           >
-            Change phone number
+            {t('mfaSetup.changePhone')}
           </button>
         </>
       )}
 
       {step === 'backup' && (
         <>
-          <Alert variant="success">Two-factor authentication enabled!</Alert>
-          <p className="bridge-step-desc">
-            Save this recovery code in a safe place. You can use it to access your account if
-            you lose your phone.
-          </p>
+          <Alert variant="success">{t('mfaSetup.successHeading')}</Alert>
           {backupCode && (
             <div className="bridge-backup-code">
               <code>{backupCode}</code>
@@ -199,7 +229,7 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
                 className="bridge-btn bridge-btn-secondary"
                 onClick={copyBackupCode}
               >
-                {copied ? 'Copied!' : 'Copy'}
+                {copied ? t('action.copied') : t('action.copy')}
               </button>
             </div>
           )}
@@ -208,7 +238,7 @@ export function MfaSetup({ onComplete, onError, className, style, ...rest }: Pro
             className="bridge-btn bridge-btn-primary"
             onClick={handleDone}
           >
-            Done
+            {t('action.done')}
           </button>
         </>
       )}
