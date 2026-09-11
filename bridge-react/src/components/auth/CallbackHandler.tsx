@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks/use-auth';
 import { getBridgeAuth, loadSubscription } from '../../core/bridge-instance';
 import { getRouterAdapter } from '../../utils/router-adapter';
+import { takeReturnTo } from '@nebulr-group/bridge-auth-core';
 
 export interface CallbackHandlerProps {
   /** Route to redirect to after a successful code exchange. @default '/' */
@@ -95,7 +96,19 @@ export function CallbackHandler({
           return redirect(loginRoute, { error: 'no_code' });
         }
         await handleCallback(code);
-        return redirect(successRoute, Object.keys(preservedQuery).length > 0 ? preservedQuery : undefined);
+        // TBP-629 — restore the deep link <ProtectedRoute> stashed before it
+        // sent this visitor to the hosted portal. One-shot and re-sanitized, and
+        // null when nothing was stashed — so an app with no deep linking lands
+        // on `successRoute` exactly as it always did.
+        //
+        // `preservedQuery` (today: `payment`) wins: it signals a just-completed
+        // checkout whose landing page the billing flow owns, and that is a
+        // deliberate destination rather than a remembered one.
+        const stashedReturnTo = takeReturnTo();
+        if (Object.keys(preservedQuery).length > 0) {
+          return redirect(successRoute, preservedQuery);
+        }
+        return redirect(stashedReturnTo ?? successRoute);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'auth_failed';
         // A Stripe-confirm failure shouldn't dump the user on the login page.
