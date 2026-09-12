@@ -1,6 +1,6 @@
 {
   "name": "@nebulr-group/bridge-react",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "bridge integration for React applications",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
@@ -55,7 +55,7 @@
   "peerDependencies": {
     "react": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
     "react-dom": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
-    "@nebulr-group/bridge-auth-core": ">=0.5.1 <1.0.0"
+    "@nebulr-group/bridge-auth-core": ">=0.6.0 <1.0.0"
   },
   "dependencies": {
     "jose": "^6.0.10",
@@ -74,6 +74,6 @@
     "rollup": "^4.14.1",
     "tslib": "^2.6.2",
     "typescript": "^5.4.0",
-    "@nebulr-group/bridge-auth-core": "^0.5.1"
+    "@nebulr-group/bridge-auth-core": "^0.6.0"
   }
 }
