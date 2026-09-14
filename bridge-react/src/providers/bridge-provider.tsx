@@ -3,6 +3,7 @@ import { BridgeConfig } from '../types/config';
 import { ensureAppConfig, getBridgeAuth, initBridge, markReady, setBridgeConfig } from '../core/bridge-instance';
 import { startBridgeRuntime, stopBridgeRuntime } from '../core/bridge-runtime';
 import { createBridgeFlags, type BridgeFlagsBundle } from '../flags/bootstrap';
+import { RealtimeDevBadge } from '../components/developer/RealtimeDevBadge';
 import { getRouterAdapter } from '../utils/router-adapter';
 import { logger, setLoggerDebug } from '../utils/logger';
 import type { BridgeAuthConfig } from '@nebulr-group/bridge-auth-core';
@@ -255,5 +256,13 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
     };
   }, [paywallRoute]);
 
-  return <>{children}</>;
+  // TBP-644 — the "Live updates off — why?" badge, mounted here so every app
+  // gets it without code changes. Development builds only (the component
+  // checks NODE_ENV); `config.devBadge: false` turns it off there too.
+  return (
+    <>
+      {children}
+      <RealtimeDevBadge enabled={config?.devBadge !== false} />
+    </>
+  );
 };
