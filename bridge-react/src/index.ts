@@ -101,6 +101,9 @@ export type {
 
 // ── Developer (API tokens) ────────────────────────────────────────────────────
 export { ApiTokenManagement } from './components/developer/ApiTokenManagement';
+// TBP-644 — dev-only live-updates badge. <BridgeProvider> already mounts it;
+// exported for apps that compose their own provider.
+export { RealtimeDevBadge, type RealtimeDevBadgeProps } from './components/developer/RealtimeDevBadge';
 
 // Feature Flags 2.0 — declarative component + reactive hook (registry-backed,
 // rides on the core runtime mounted by <BridgeProvider>). Hard-replaced the
@@ -144,8 +147,17 @@ export type {
 } from './core/snapshot-stores';
 export { BridgeEventsDispatcher, type BridgeEventHandlers } from './core/events';
 // Reactive realtime connection status — surface offline indicators / retry banners.
-export { realtimeStatus, useRealtimeStatus } from './core/realtime-status';
-export type { ConnectionState } from '@nebulr-group/bridge-auth-core';
+// TBP-644 — `realtimeStatus` / `useRealtimeStatus` stay a plain state string;
+// the `*Detail` siblings add the reason, whose side it is and whether it
+// still retries. `onBridgeRealtimeStatus` is the event-style subscription.
+export {
+  realtimeStatus,
+  useRealtimeStatus,
+  realtimeStatusDetail,
+  useRealtimeStatusDetail,
+} from './core/realtime-status';
+export { onBridgeRealtimeStatus } from './core/bridge-runtime';
+export type { ConnectionState, RealtimeStatus } from '@nebulr-group/bridge-auth-core';
 
 // ── Feature Flags 2.0 surface (also available via the `./flags` subpath) ──────
 export {
