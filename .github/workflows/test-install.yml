@@ -30,6 +30,11 @@ jobs:
           bun run package
           mv nebulr-group-bridge-react-*.tgz install-test-pkg.tgz
 
+      # TBP-665 — the main entry and `/flags` must share one flag registry in
+      # the BUILT output (a per-entry build gave each its own copy).
+      - name: Built dist shares one flag registry
+        run: cd bridge-react && bun test ./test-dist/shared-registry.dist.tsx
+
       - name: Install with React ${{ matrix.react-version }}
         run: |
           mkdir -p install-test
@@ -38,3 +43,22 @@ jobs:
           npm install react@^${{ matrix.react-version }} react-dom@^${{ matrix.react-version }}
           npm install ../install-test-pkg.tgz
           echo "Install with react@${{ matrix.react-version }} succeeded"
+
+      - name: Installed package shares one flag registry (ESM + CJS)
+        working-directory: install-test
+        run: |
+          cat > check.mjs <<'EOF'
+          import { createRequire } from 'node:module';
+          const require = createRequire(import.meta.url);
+          const inst = { flag: () => ({ passed: true, value: true }) };
+          const mainEsm = await import('@nebulr-group/bridge-react');
+          const flagsEsm = await import('@nebulr-group/bridge-react/flags');
+          mainEsm.setBridgeFlagsInstance(inst);
+          const mainCjs = require('@nebulr-group/bridge-react');
+          const flagsCjs = require('@nebulr-group/bridge-react/flags');
+          mainCjs.setBridgeFlagsInstance(inst);
+          const ok = flagsEsm.getBridgeFlagsInstance() === inst && flagsCjs.getBridgeFlagsInstance() === inst;
+          console.log(ok ? 'shared registry: ok' : 'shared registry: SPLIT');
+          process.exit(ok ? 0 : 1);
+          EOF
+          node check.mjs

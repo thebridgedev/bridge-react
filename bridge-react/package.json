@@ -40,6 +40,7 @@
     "build:watch": "rollup -c --bundleConfigAsCjs --watch",
     "copy-styles": "cp src/styles.css dist/styles.css",
     "test": "bun test",
+    "test:dist": "bun run build && bun test ./test-dist/shared-registry.dist.tsx",
     "prepublishOnly": "bun run build",
     "prepack": "bun run build && bun run copy-files",
     "copy-files": "cp ../LICENSE ./LICENSE",

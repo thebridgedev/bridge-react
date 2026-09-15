@@ -1,8 +1,6 @@
 import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 
-const packageJson = require("./package.json");
-
 const external = [
   "react",
   "react-dom",
@@ -16,49 +14,44 @@ const external = [
   "@stripe/stripe-js",
 ];
 
-export default [
-  // Main entry — auth + payments + flags (full surface, backwards compatible)
-  {
-    input: "src/index.ts",
-    output: [
-      {
-        file: packageJson.main,
-        format: 'cjs',
-      },
-      {
-        file: packageJson.module,
-        format: 'es'
-      },
-    ],
-    plugins: [
-      typescript({
-        tsconfig: "./tsconfig.json"
-      }),
-      terser()
-    ],
-    external,
+// ONE build with both entries (TBP-665). The main entry (auth + payments +
+// flags, full surface) and the flags-only entry
+// (`@nebulr-group/bridge-react/flags`, auth-free, TBP-200) used to be two
+// separate rollup configs, so each bundle inlined its own copy of every module
+// they share — including the flag registry and the runtime's status stores.
+// `<BridgeProvider>` registered the flag instance in the main copy, and a
+// `useFlag` imported from `/flags` read the other copy and returned the
+// default forever. Built together, shared modules land in `dist/chunks/` and
+// both entries import the same instance. The `/flags` entry still pulls in
+// only the modules it reaches, so it stays auth-free.
+//
+// Entry file names are unchanged, so package.json `main` / `module` /
+// `exports` resolve exactly as before.
+export default {
+  input: {
+    index: "src/index.ts",
+    "flags/index": "src/flags/index.ts",
   },
-  // Flags-only entry — auth-free. Apps in standalone-FF mode import from
-  // `@nebulr-group/bridge-react/flags` and the auth subtree is tree-shaken
-  // out at bundle time. (TBP-200)
-  {
-    input: "src/flags/index.ts",
-    output: [
-      {
-        file: "dist/flags/index.cjs.js",
-        format: 'cjs',
-      },
-      {
-        file: "dist/flags/index.esm.js",
-        format: 'es'
-      },
-    ],
-    plugins: [
-      typescript({
-        tsconfig: "./tsconfig.json"
-      }),
-      terser()
-    ],
-    external,
-  },
-];
+  output: [
+    {
+      dir: "dist",
+      format: "cjs",
+      entryFileNames: "[name].cjs.js",
+      chunkFileNames: "chunks/[name]-[hash].cjs.js",
+      exports: "named",
+    },
+    {
+      dir: "dist",
+      format: "es",
+      entryFileNames: "[name].esm.js",
+      chunkFileNames: "chunks/[name]-[hash].esm.js",
+    },
+  ],
+  plugins: [
+    typescript({
+      tsconfig: "./tsconfig.json",
+    }),
+    terser(),
+  ],
+  external,
+};
