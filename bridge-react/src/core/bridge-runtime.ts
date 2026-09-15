@@ -48,10 +48,16 @@ import {
   applyEntitlementsChanged,
   applySessionSnapshot,
   applySubscriptionPlanChanged,
+  useSnapshotStore,
 } from './snapshot-stores';
 import { bridgeEvents } from './events';
 import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
-import { invalidateRouteGuardCache } from './guard-cache';
+import {
+  clearPendingAuthorizationChange,
+  invalidateRouteGuardCache,
+  pendingAuthorizationChange,
+  trackAuthorizationChange,
+} from './guard-cache';
 import { logger } from '../utils/logger';
 
 const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
@@ -91,10 +97,50 @@ const _onAuthorizationChangeSubs = new Set<(reason: BridgeAuthorizationChangeRea
 // dispatched to app handlers, so a handler that navigates is evaluated
 // against fresh state. auth-core has already moved its billing stores when
 // the billing handlers run, so the re-evaluation sees the new plan.
-function authorizationChanged(reason: BridgeAuthorizationChangeReason): void {
+//
+// `refresh` (TBP-654, upgrade race): whether this change needs a new token.
+// A new token IS the refreshed state; a reconnect needs one only when its
+// billing catch-up recovered a plan change (see catchUpAfterReconnect).
+function authorizationChanged(
+  reason: BridgeAuthorizationChangeReason,
+  { refresh = reason !== 'token' && reason !== 'reconnect' }: { refresh?: boolean } = {},
+): void {
   invalidateRouteGuardCache();
+  if (refresh) refreshForAuthorizationChange();
   for (const fn of _onAuthorizationChangeSubs) {
     try { fn(reason); } catch { /* subscriber errors swallowed */ }
+  }
+}
+
+// TBP-654 (upgrade race) — the page shows a new plan as soon as
+// `subscription.plan_changed` patches the store, but the access token that
+// carries the new plan only arrives with the next refresh. That refresh used to
+// start on `user.state_changed`, which the server publishes AFTER
+// `plan_changed` (TBP-660), so a decision taken the moment the page said "Pro"
+// was judged on the old token and refused (2 of 6 stage runs against
+// bridge-svelte; the refresh landed ~300 ms after the click).
+//
+// So every authorization-affecting event starts the refresh immediately, and
+// registers it as the pending authorization change that
+// `settleBridgeAuthorizationChange()` waits for (bounded). One refresh per
+// burst: an event that arrives while one is in flight joins it — and
+// auth-core's refreshTokens() dedupes as well. No loop: the refreshed token
+// only re-runs `authorizationChanged('token')`, which never refreshes, and the
+// reconnect it causes is flagged self-induced. A signed-out session has no
+// token to refresh and no pending change.
+function refreshForAuthorizationChange(): Promise<void> | undefined {
+  if (!_currentAuthToken) return undefined;
+  const pending = pendingAuthorizationChange();
+  if (pending) return pending;
+  return trackAuthorizationChange(startRefresh());
+}
+
+/** auth-core's refresh as a promise, even if the call itself throws. */
+function startRefresh(): Promise<unknown> {
+  try {
+    return Promise.resolve(getBridgeAuth().refreshTokens());
+  } catch (err) {
+    return Promise.reject(err); // includes BridgeAuth not constructed
   }
 }
 
@@ -118,7 +164,13 @@ function authorizationChanged(reason: BridgeAuthorizationChangeReason): void {
 // nothing.
 let _catchUpSeq = 0;
 
-async function catchUpAfterReconnect(): Promise<void> {
+//
+// TBP-654 — a catch-up that recovers a plan change needs the token carrying
+// it, like the push it replaces, unless this reconnect already started a
+// refresh (a genuine reconnect does, after the missed push, so its token has
+// the plan). Only an actual change refreshes: the reconnect that refreshed
+// token causes finds the plan unchanged, so this cannot loop.
+async function catchUpAfterReconnect(refreshedAtReconnect: boolean): Promise<void> {
   const seq = ++_catchUpSeq;
   // The token the socket itself is using — BridgeAuth's may lag behind it.
   const accessToken = _currentAuthToken;
@@ -134,9 +186,10 @@ async function catchUpAfterReconnect(): Promise<void> {
   }
   if (seq !== _catchUpSeq || !_realtime) return;
   if (!state || typeof state.plan?.slug !== 'string') return; // nothing authoritative to apply
+  const planChanged = useSnapshotStore.getState().tenantSubscription?.plan?.slug !== state.plan.slug;
   try { useBillingBridge().subscription.hydrate(state); } catch { /* billing surface optional */ }
   try { applySubscriptionPlanChanged({ to: state?.plan, status: state?.status }); } catch { /* defensive */ }
-  authorizationChanged('reconnect');
+  authorizationChanged('reconnect', { refresh: planChanged && !refreshedAtReconnect });
 }
 
 /**
@@ -213,13 +266,18 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
     // (network blips, server restarts) should trigger the catch-up refresh.
     const causedByReauthorize = _reauthInFlight;
     _reauthInFlight = false;
-    if (_connectedOnce && !causedByReauthorize) {
-      getBridgeAuth().refreshTokens().catch(() => { /* best-effort */ });
+    const refreshNow = _connectedOnce && !causedByReauthorize;
+    if (refreshNow) {
+      // TBP-654 — signed in, this refresh is the pending authorization change
+      // too: a plan change missed while the socket was down lands with it.
+      const refresh = startRefresh();
+      if (_currentAuthToken && !pendingAuthorizationChange()) void trackAuthorizationChange(refresh);
+      else refresh.catch(() => { /* best-effort */ });
     }
     // TBP-660 — but the billing catch-up runs on EVERY reconnect, including
     // the ones reauthorize() causes: those are exactly the swaps a plan
     // change's own push can fall into.
-    if (_connectedOnce) void catchUpAfterReconnect();
+    if (_connectedOnce) void catchUpAfterReconnect(refreshNow);
     _connectedOnce = true;
     for (const fn of _onOpenSubs) {
       try { fn(); } catch { /* subscriber errors swallowed */ }
@@ -265,12 +323,30 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
   // user.state_changed → JWT refresh. Fresh tokens flow back through the token
   // subscription below and re-bind channel scopes.
   _realtime.setOnUserState(async (msg: UserStateMessage) => {
-    // TBP-654 — role / attribute / plan claims changed server-side.
+    // TBP-654 — role / attribute / plan claims changed server-side. This
+    // starts the token refresh (or joins the one a preceding plan_changed
+    // started). A signed-out session has no token and gets no refresh.
     authorizationChanged('user.state_changed');
     for (const fn of _onUserStateSubs) {
       try { fn({ reason: msg.reason }); } catch { /* subscriber errors swallowed */ }
     }
-    try { await getBridgeAuth().refreshTokens(); } catch { /* next scheduled refresh picks it up */ }
+    // Never rejects; a failed refresh is picked up by the next scheduled one.
+    await pendingAuthorizationChange();
+    // The refresh this joined may have been minted BEFORE the server bumped
+    // the token version this message announces: a plan_changed that arrived
+    // first started it, and the server bumps after publishing plan_changed.
+    // Such a token carries the new plan but is `TOKEN_VERSION_STALE` for every
+    // version-checked endpoint (seen on stage: /billing/state 401, then
+    // "Subscription unavailable"). One follow-up refresh, only when the token
+    // we ended up with is behind the announced version — so it cannot loop,
+    // and an older server that sends no version keeps the single refresh.
+    const announced = (msg as { tokenVersion?: unknown }).tokenVersion;
+    if (typeof announced === 'number') {
+      const tv = decodeJwtPayload(_currentAuthToken ?? '')?.tv;
+      if (typeof tv === 'number' && tv < announced) {
+        await refreshForAuthorizationChange();
+      }
+    }
   });
 
   // Best-effort: bind the billing stores + billing-family events to this
@@ -406,6 +482,7 @@ export async function stopBridgeRuntime(): Promise<void> {
   _realtime = undefined;
   _currentAuthToken = undefined;
   _catchUpSeq += 1; // an in-flight reconnect catch-up must not land after stop
+  clearPendingAuthorizationChange();
   if (client) {
     try { await client.stop(); } catch { /* already stopped, ignore */ }
   }
@@ -487,6 +564,7 @@ export function __resetBridgeRuntime(): void {
   _onUserStateSubs.clear();
   _onStatusSubs.clear();
   _onAuthorizationChangeSubs.clear();
+  clearPendingAuthorizationChange();
   _currentAuthToken = undefined;
   _catchUpSeq += 1;
   if (_unsubscribeAuth) {
