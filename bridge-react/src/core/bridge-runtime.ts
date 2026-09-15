@@ -34,6 +34,8 @@
  */
 import {
   RealtimeClient,
+  fetchBillingState,
+  type BillingSubscriptionState,
   type RealtimeClientConfig,
   type RealtimeStatus,
   type SessionSnapshotMessage,
@@ -56,14 +58,16 @@ const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
 
 /**
  * Why cached gate verdicts were dropped (TBP-654): a plan change, an
- * entitlements change, a server-side user state change, or a new access token
- * (sign-in, refresh, sign-out).
+ * entitlements change, a server-side user state change, a new access token
+ * (sign-in, refresh, sign-out), or the billing catch-up that runs after every
+ * realtime reconnect (TBP-660).
  */
 export type BridgeAuthorizationChangeReason =
   | 'subscription.plan_changed'
   | 'entitlements.changed'
   | 'user.state_changed'
-  | 'token';
+  | 'token'
+  | 'reconnect';
 
 let _realtime: RealtimeClient | undefined;
 let _unsubscribeAuth: (() => void) | undefined;
@@ -92,6 +96,47 @@ function authorizationChanged(reason: BridgeAuthorizationChangeReason): void {
   for (const fn of _onAuthorizationChangeSubs) {
     try { fn(reason); } catch { /* subscriber errors swallowed */ }
   }
+}
+
+// TBP-660 — AppSync Events has no replay: anything published while the socket
+// is down is gone. The dangerous gap is one the SDK opens itself. On a plan
+// change the server sends `user.state_changed` first; we refresh the token,
+// the new token reauthorizes, and reauthorize() replaces the socket, so a
+// `subscription.plan_changed` published during that swap never arrives (seen
+// in 1 of 8 stage runs against bridge-svelte). A reconnect we caused skips the
+// token catch-up (it is already current), so nothing else repaired the plan.
+//
+// So after EVERY reconnect, including one caused by reauthorize(), fetch the
+// billing state once and apply it to both subscription surfaces: auth-core's
+// `useBridge().subscription` (notice, gate, PlanSelector) and
+// `bridge.tenant.subscription`. Entitlements, branding and user ride the
+// `session.snapshot` the server re-publishes on every resubscribe.
+//
+// Loop safety: the catch-up never touches tokens, so it cannot cause another
+// reauthorize. One fetch per reconnect; a newer reconnect's catch-up
+// supersedes an older one still in flight, and a stopped runtime applies
+// nothing.
+let _catchUpSeq = 0;
+
+async function catchUpAfterReconnect(): Promise<void> {
+  const seq = ++_catchUpSeq;
+  // The token the socket itself is using — BridgeAuth's may lag behind it.
+  const accessToken = _currentAuthToken;
+  const { apiBaseUrl, appId } = resolveApiContext();
+  if (!accessToken || !appId) return; // signed out: no workspace billing to repair
+  let state: BillingSubscriptionState;
+  try {
+    state = await fetchBillingState({ apiBaseUrl, accessToken, appId });
+  } catch (err) {
+    // Best-effort: the next push or reconnect gets another chance.
+    logger.debug('[bridge-runtime] reconnect billing catch-up failed:', err);
+    return;
+  }
+  if (seq !== _catchUpSeq || !_realtime) return;
+  if (!state || typeof state.plan?.slug !== 'string') return; // nothing authoritative to apply
+  try { useBillingBridge().subscription.hydrate(state); } catch { /* billing surface optional */ }
+  try { applySubscriptionPlanChanged({ to: state?.plan, status: state?.status }); } catch { /* defensive */ }
+  authorizationChanged('reconnect');
 }
 
 /**
@@ -171,6 +216,10 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
     if (_connectedOnce && !causedByReauthorize) {
       getBridgeAuth().refreshTokens().catch(() => { /* best-effort */ });
     }
+    // TBP-660 — but the billing catch-up runs on EVERY reconnect, including
+    // the ones reauthorize() causes: those are exactly the swaps a plan
+    // change's own push can fall into.
+    if (_connectedOnce) void catchUpAfterReconnect();
     _connectedOnce = true;
     for (const fn of _onOpenSubs) {
       try { fn(); } catch { /* subscriber errors swallowed */ }
@@ -356,6 +405,7 @@ export async function stopBridgeRuntime(): Promise<void> {
   const client = _realtime;
   _realtime = undefined;
   _currentAuthToken = undefined;
+  _catchUpSeq += 1; // an in-flight reconnect catch-up must not land after stop
   if (client) {
     try { await client.stop(); } catch { /* already stopped, ignore */ }
   }
@@ -438,6 +488,7 @@ export function __resetBridgeRuntime(): void {
   _onStatusSubs.clear();
   _onAuthorizationChangeSubs.clear();
   _currentAuthToken = undefined;
+  _catchUpSeq += 1;
   if (_unsubscribeAuth) {
     _unsubscribeAuth();
     _unsubscribeAuth = undefined;
