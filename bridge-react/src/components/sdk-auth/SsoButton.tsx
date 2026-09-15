@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { getBridgeAuth } from '../../core/bridge-instance';
 import { Spinner } from './shared/Spinner';
 import { getTranslator } from '../../i18n';
+import { authErrorMessage, isOriginNotAllowed } from './shared/auth-error';
 
 interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onError'> {
   connection: FederationConnection;
@@ -45,9 +46,16 @@ export function SsoButton({
         throw new Error(result.error || t('sso.error.login'));
       }
     } catch (err: any) {
+      // TBP-669 — the origin refusal travels as-is (code / status intact), so
+      // LoginForm can recognise it and show the fix.
+      if (isOriginNotAllowed(err)) {
+        authErrorMessage(err, t, 'sso.error.login'); // logs the one console line
+        onError?.(err);
+        return;
+      }
       const message = err.message?.includes('popup')
         ? t('sso.error.popupBlocked')
-        : err.message || t('sso.error.login');
+        : authErrorMessage(err, t, 'sso.error.login');
       onError?.(new Error(message));
     } finally {
       setLoading(false);

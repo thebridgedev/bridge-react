@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { MessageOverrides } from '@nebulr-group/bridge-auth-core';
 import { getBridgeAuth } from '../../core/bridge-instance';
 import { getTranslator } from '../../i18n';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthFormWrapper } from './shared/AuthFormWrapper';
 import { Alert } from './shared/Alert';
 import { Spinner } from './shared/Spinner';
@@ -69,7 +70,7 @@ export function ForgotPassword({
       await getBridgeAuth().sendResetPasswordLink(email);
       setEmailSent(true);
     } catch (err: any) {
-      setError(err.message || t('forgot.error.send'));
+      setError(authErrorMessage(err, t, 'forgot.error.send'));
       onError?.(err);
     } finally {
       setLoading(false);
@@ -96,7 +97,7 @@ export function ForgotPassword({
       setPasswordReset(true);
       onComplete?.();
     } catch (err: any) {
-      setError(err.message || t('forgot.error.update'));
+      setError(authErrorMessage(err, t, 'forgot.error.update'));
       onError?.(err);
     } finally {
       setLoading(false);
