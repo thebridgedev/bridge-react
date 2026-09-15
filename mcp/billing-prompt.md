@@ -68,7 +68,7 @@ import { BridgeBillingNotice } from '@nebulr-group/bridge-react';
 <BridgeBillingNotice />
 ```
 
-It reads `useBridge().subscription` (the Billing 2.0 lifecycle snapshot from auth-core) and renders for `past_due`, `trial_active`, `trial_ending_soon`, `cancel_at_period_end`, `canceled`, and the `dunning_*` states. Admins get a CTA; members get an informational banner. Props:
+It reads the Billing 2.0 lifecycle snapshot from auth-core's billing surface (`useBridgeBilling().subscription`) and renders for `past_due`, `trial_active`, `trial_ending_soon`, `cancel_at_period_end`, `canceled`, and the `dunning_*` states. Admins get a CTA; members get an informational banner. Props:
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
@@ -118,23 +118,23 @@ Skip if the plans have no per-resource limits or feature differences.
 
 > Quotas and entitlements were configured in the master prompt (or the Bridge admin → **Plans**) via `bridge plan quota set` and `bridge plan entitlement set`. This step only surfaces them.
 
-To show a live quota counter, drop in `<BridgeQuotaBanner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` and ticks live as usage is reported, no polling. Props: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; falls back to `billing.manageRoute` config, then `/billing`).
+To show a live quota counter, drop in `<BridgeQuotaBanner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridgeBilling().quota(metric)` and ticks live as usage is reported, no polling. Props: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; falls back to `billing.manageRoute` config, then `/billing`).
 
-To gate a feature by entitlement, call `useBridge().entitlements.can('key')`:
+To gate a feature by entitlement, read `bridge.tenant.entitlements.snapshot` through `useBridgeReadable` so the component re-renders when the plan changes:
 
 ```tsx
-import { useBridge } from '@nebulr-group/bridge-react';
+import { bridge, useBridgeReadable } from '@nebulr-group/bridge-react';
 
 export function AnalyticsLink() {
-  const bridge = useBridge();
-  if (!bridge.entitlements.can('advanced_analytics')) return null;
+  const entitlements = useBridgeReadable(bridge.tenant.entitlements.snapshot);
+  if (!entitlements?.advanced_analytics) return null;
   return <a href="/analytics">Open advanced analytics</a>;
 }
 ```
 
-`can()` returns `false` until hydrated (fail-closed) and flips live when the plan changes or a `hard` quota exhausts.
+The snapshot is `null` until the first session snapshot arrives, so the check fails closed, and it is replaced live when the plan changes or a `hard` quota exhausts. Outside a component (an event handler, a plain module), `bridge.tenant.entitlements.can('advanced_analytics')` gives the same answer as a one-off read.
 
-> **Note:** `useBridge` is also re-exported as `useBridgeBilling` from `@nebulr-group/bridge-react` — same accessor, either import works.
+> **Note:** two different functions share the name. `useBridge()` from `@nebulr-group/bridge-react` returns the `bridge` object above (`bridge.tenant.*`, `bridge.user`, …) and has no `quota()`, `entitlements` or `subscription` of its own. auth-core's billing surface, which the quota banner and billing notice read, is re-exported as `useBridgeBilling()`. Use `useBridgeBilling().quota(metric)` for a raw quota read.
 
 ## Step 4 — Reporting usage
 
@@ -152,10 +152,11 @@ Reporting to a metric not configured in the admin is accepted server-side but ti
 
 Two reads, depending on the call site:
 
-- `useSubscription()` returns the Phase 1.0 status shape — `{ status, plans, loading, error }` — backed by the Zustand store. Good for plan name / "is there a plan" checks.
-- `useBridge().subscription` is the Billing 2.0 lifecycle snapshot (`status`, `daysLeft`, `gateEngaged`, `recoveryUrl`, …). `<BridgeSubscriptionStatus />` is the ready-made display component for plan name + status badge.
+- `useBridgeReadable(bridge.tenant.subscription)` returns the canonical plan and status (`{ plan: { slug, name }, status, endsAt }`, `null` until the first session snapshot). It moves live on a plan change. Good for plan name / "is there a plan" checks.
+- `useSubscription()` returns the checkout-flow status shape (`{ status, plans, loading, error }`) from the Zustand store. Call `loadSubscription()` to populate it; it is what `<PlanSelector>` uses.
+- `useBridgeBilling().subscription` is auth-core's Billing 2.0 lifecycle store (`status`, `daysLeft`, `gateEngaged`, `recoveryUrl`, …) behind the billing notice. `<BridgeSubscriptionStatus />` is the ready-made display component for plan name + status badge.
 
-Both update reactively — no polling. Import from `@nebulr-group/bridge-react`.
+Import all of them from `@nebulr-group/bridge-react`.
 
 ## What to expect in the dashboard
 
