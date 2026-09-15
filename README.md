@@ -56,20 +56,16 @@ You can also configure through environment variables (recommended):
 VITE_BRIDGE_APP_ID=your-app-id
 VITE_BRIDGE_CALLBACK_URL=http://localhost:5173/auth/oauth-callback
 VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE=/protected
-VITE_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
-VITE_BRIDGE_TEAM_MANAGEMENT_URL=https://api.thebridge.dev/cloud-views/user-management-portal/users
-VITE_BRIDGE_CLOUD_VIEWS_URL=https://api.thebridge.dev/cloud-views
 VITE_BRIDGE_DEBUG=true
 
 # Create React App
 REACT_APP_BRIDGE_APP_ID=your-app-id
 REACT_APP_BRIDGE_CALLBACK_URL=http://localhost:3000/auth/oauth-callback
 REACT_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE=/protected
-REACT_APP_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
-REACT_APP_BRIDGE_TEAM_MANAGEMENT_URL=https://api.thebridge.dev/cloud-views/user-management-portal/users
-REACT_APP_BRIDGE_CLOUD_VIEWS_URL=https://api.thebridge.dev/cloud-views
 REACT_APP_BRIDGE_DEBUG=true
 ```
+
+The provider reads exactly these keys: `APP_ID`, `API_BASE_URL`, `CALLBACK_URL`, `DEFAULT_REDIRECT_ROUTE`, `LOGIN_ROUTE` and `DEBUG`, each with the `VITE_BRIDGE_` or `REACT_APP_BRIDGE_` prefix. `authBaseUrl`, `teamManagementUrl` and `cloudViewsUrl` have no environment variable; set them on the `config` prop.
 
 ### Essential Configuration
 - **appId** (required string): Your application ID from the Bridge dashboard.

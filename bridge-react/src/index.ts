@@ -157,6 +157,12 @@ export {
   useRealtimeStatusDetail,
 } from './core/realtime-status';
 export { onBridgeRealtimeStatus } from './core/bridge-runtime';
+// TBP-654 — plan / entitlements / user state / token changes re-evaluate every
+// flag gate; subscribe to re-check a guard of your own.
+export {
+  onBridgeAuthorizationChange,
+  type BridgeAuthorizationChangeReason,
+} from './core/bridge-runtime';
 export type { ConnectionState, RealtimeStatus } from '@nebulr-group/bridge-auth-core';
 
 // ── Feature Flags 2.0 surface (also available via the `./flags` subpath) ──────

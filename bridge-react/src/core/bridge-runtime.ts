@@ -34,6 +34,8 @@
  */
 import {
   RealtimeClient,
+  fetchBillingState,
+  type BillingSubscriptionState,
   type RealtimeClientConfig,
   type RealtimeStatus,
   type SessionSnapshotMessage,
@@ -49,9 +51,23 @@ import {
 } from './snapshot-stores';
 import { bridgeEvents } from './events';
 import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
+import { invalidateRouteGuardCache } from './guard-cache';
 import { logger } from '../utils/logger';
 
 const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
+
+/**
+ * Why cached gate verdicts were dropped (TBP-654): a plan change, an
+ * entitlements change, a server-side user state change, a new access token
+ * (sign-in, refresh, sign-out), or the billing catch-up that runs after every
+ * realtime reconnect (TBP-660).
+ */
+export type BridgeAuthorizationChangeReason =
+  | 'subscription.plan_changed'
+  | 'entitlements.changed'
+  | 'user.state_changed'
+  | 'token'
+  | 'reconnect';
 
 let _realtime: RealtimeClient | undefined;
 let _unsubscribeAuth: (() => void) | undefined;
@@ -63,6 +79,65 @@ const _onSnapshotSubs = new Set<(msg: SessionSnapshotMessage) => void>();
 const _onUserStateSubs = new Set<(event: { reason: string }) => void>();
 // TBP-644 — full realtime status (state + reason + whose side + retrying).
 const _onStatusSubs = new Set<(status: RealtimeStatus) => void>();
+// TBP-654 — anything that can change a gate's verdict without changing a flag.
+const _onAuthorizationChangeSubs = new Set<(reason: BridgeAuthorizationChangeReason) => void>();
+
+// TBP-654 — a plan-targeted gate (`useFlag('pro-page')` in a route guard)
+// depends on the user's plan, entitlements and token, not on the flag
+// definition. Only a flag push used to re-evaluate gates, so an upgraded user
+// stayed locked out of the page they had just paid for.
+//
+// Called exactly once per triggering event, and always BEFORE the event is
+// dispatched to app handlers, so a handler that navigates is evaluated
+// against fresh state. auth-core has already moved its billing stores when
+// the billing handlers run, so the re-evaluation sees the new plan.
+function authorizationChanged(reason: BridgeAuthorizationChangeReason): void {
+  invalidateRouteGuardCache();
+  for (const fn of _onAuthorizationChangeSubs) {
+    try { fn(reason); } catch { /* subscriber errors swallowed */ }
+  }
+}
+
+// TBP-660 — AppSync Events has no replay: anything published while the socket
+// is down is gone. The dangerous gap is one the SDK opens itself. On a plan
+// change the server sends `user.state_changed` first; we refresh the token,
+// the new token reauthorizes, and reauthorize() replaces the socket, so a
+// `subscription.plan_changed` published during that swap never arrives (seen
+// in 1 of 8 stage runs against bridge-svelte). A reconnect we caused skips the
+// token catch-up (it is already current), so nothing else repaired the plan.
+//
+// So after EVERY reconnect, including one caused by reauthorize(), fetch the
+// billing state once and apply it to both subscription surfaces: auth-core's
+// `useBridge().subscription` (notice, gate, PlanSelector) and
+// `bridge.tenant.subscription`. Entitlements, branding and user ride the
+// `session.snapshot` the server re-publishes on every resubscribe.
+//
+// Loop safety: the catch-up never touches tokens, so it cannot cause another
+// reauthorize. One fetch per reconnect; a newer reconnect's catch-up
+// supersedes an older one still in flight, and a stopped runtime applies
+// nothing.
+let _catchUpSeq = 0;
+
+async function catchUpAfterReconnect(): Promise<void> {
+  const seq = ++_catchUpSeq;
+  // The token the socket itself is using — BridgeAuth's may lag behind it.
+  const accessToken = _currentAuthToken;
+  const { apiBaseUrl, appId } = resolveApiContext();
+  if (!accessToken || !appId) return; // signed out: no workspace billing to repair
+  let state: BillingSubscriptionState;
+  try {
+    state = await fetchBillingState({ apiBaseUrl, accessToken, appId });
+  } catch (err) {
+    // Best-effort: the next push or reconnect gets another chance.
+    logger.debug('[bridge-runtime] reconnect billing catch-up failed:', err);
+    return;
+  }
+  if (seq !== _catchUpSeq || !_realtime) return;
+  if (!state || typeof state.plan?.slug !== 'string') return; // nothing authoritative to apply
+  try { useBillingBridge().subscription.hydrate(state); } catch { /* billing surface optional */ }
+  try { applySubscriptionPlanChanged({ to: state?.plan, status: state?.status }); } catch { /* defensive */ }
+  authorizationChanged('reconnect');
+}
 
 /**
  * Advanced runtime overrides. Product consumers never pass these; tests and
@@ -141,6 +216,10 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
     if (_connectedOnce && !causedByReauthorize) {
       getBridgeAuth().refreshTokens().catch(() => { /* best-effort */ });
     }
+    // TBP-660 — but the billing catch-up runs on EVERY reconnect, including
+    // the ones reauthorize() causes: those are exactly the swaps a plan
+    // change's own push can fall into.
+    if (_connectedOnce) void catchUpAfterReconnect();
     _connectedOnce = true;
     for (const fn of _onOpenSubs) {
       try { fn(); } catch { /* subscriber errors swallowed */ }
@@ -186,6 +265,8 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
   // user.state_changed → JWT refresh. Fresh tokens flow back through the token
   // subscription below and re-bind channel scopes.
   _realtime.setOnUserState(async (msg: UserStateMessage) => {
+    // TBP-654 — role / attribute / plan claims changed server-side.
+    authorizationChanged('user.state_changed');
     for (const fn of _onUserStateSubs) {
       try { fn({ reason: msg.reason }); } catch { /* subscriber errors swallowed */ }
     }
@@ -209,6 +290,7 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
     billing.handle({
       'subscription.plan_changed': (m) => {
         try { applySubscriptionPlanChanged(m); } catch { /* store updates shouldn't throw, defensive */ }
+        authorizationChanged('subscription.plan_changed');
         bridgeEvents._dispatch(m);
       },
       'payment.failed': (m) => bridgeEvents._dispatch(m),
@@ -229,6 +311,7 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
       'entitlements.changed': (m) => {
         // Only the payload-carrying variant has a map; the signal-only one is a no-op here.
         try { applyEntitlementsChanged(m as { entitlements?: unknown }); } catch { /* defensive */ }
+        authorizationChanged('entitlements.changed');
         bridgeEvents._dispatch(m);
       },
     });
@@ -256,6 +339,10 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
     const prevAuthToken = _currentAuthToken;
     _currentAuthToken = accessToken ?? undefined;
     const tokenChanged = !seed && prevAuthToken !== _currentAuthToken;
+
+    // TBP-654 — a new token (sign-in, the refresh a plan change causes,
+    // sign-out) invalidates every gate verdict taken with the old one.
+    if (tokenChanged) authorizationChanged('token');
 
     if (!accessToken) {
       // Logout — drop user + workspace channel scopes. The app channel keeps
@@ -318,6 +405,7 @@ export async function stopBridgeRuntime(): Promise<void> {
   const client = _realtime;
   _realtime = undefined;
   _currentAuthToken = undefined;
+  _catchUpSeq += 1; // an in-flight reconnect catch-up must not land after stop
   if (client) {
     try { await client.stop(); } catch { /* already stopped, ignore */ }
   }
@@ -369,6 +457,20 @@ export function onBridgeRealtimeStatus(handler: (status: RealtimeStatus) => void
   return () => _onStatusSubs.delete(handler);
 }
 
+/**
+ * Subscribe to changes that can alter a gate's verdict without a flag changing
+ * (TBP-654): plan change, entitlements change, user state change, new access
+ * token. Every `useFlag` / `<FeatureFlag>` has already re-evaluated and
+ * auth-core's feature-flag cache is already dropped when subscribers run. Use
+ * it to re-check a guard of your own. Returns an unsubscribe fn.
+ */
+export function onBridgeAuthorizationChange(
+  handler: (reason: BridgeAuthorizationChangeReason) => void,
+): () => void {
+  _onAuthorizationChangeSubs.add(handler);
+  return () => _onAuthorizationChangeSubs.delete(handler);
+}
+
 /** Subscribe to server-side `user.state_changed` signals. */
 export function onBridgeRealtimeUserState(
   handler: (event: { reason: string }) => void,
@@ -384,7 +486,9 @@ export function __resetBridgeRuntime(): void {
   _onSnapshotSubs.clear();
   _onUserStateSubs.clear();
   _onStatusSubs.clear();
+  _onAuthorizationChangeSubs.clear();
   _currentAuthToken = undefined;
+  _catchUpSeq += 1;
   if (_unsubscribeAuth) {
     _unsubscribeAuth();
     _unsubscribeAuth = undefined;
