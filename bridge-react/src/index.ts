@@ -163,6 +163,9 @@ export {
   onBridgeAuthorizationChange,
   type BridgeAuthorizationChangeReason,
 } from './core/bridge-runtime';
+// TBP-654 (upgrade race) — wait, bounded, for the token a plan change is
+// refreshing before a one-shot decision that reads it.
+export { settleBridgeAuthorizationChange } from './core/guard-cache';
 export type { ConnectionState, RealtimeStatus } from '@nebulr-group/bridge-auth-core';
 
 // ── Feature Flags 2.0 surface (also available via the `./flags` subpath) ──────

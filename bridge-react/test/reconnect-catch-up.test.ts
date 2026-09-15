@@ -160,10 +160,29 @@ describe('billing catch-up after a realtime reconnect (TBP-660)', () => {
     expect(billingFetches).toEqual([`Bearer ${TOKEN_B}`]); // one fetch, with the socket's current token
     expect(tenantPlan()).toBe('pro');
     expect(billingPlan()).toBe('pro');
-    // Loop guard intact: no token catch-up for a self-induced reconnect, and
-    // the billing catch-up caused no further reauthorize.
-    expect(refreshes).toBe(0);
+    // No token catch-up for a self-induced reconnect, and the billing catch-up
+    // caused no further reauthorize. The ONE refresh is TBP-654's: the
+    // catch-up recovered a plan change (free → pro), which needs the token
+    // carrying it, exactly like the push it replaces.
+    expect(refreshes).toBe(1);
     expect(reauthorizes).toBe(1);
+  });
+
+  it('TBP-654 — a catch-up that finds the plan unchanged starts no refresh, so the recovered change cannot loop', async () => {
+    start(TOKEN_A);
+    open();
+    setToken(TOKEN_B);
+    open(); // self-induced; catch-up recovers free → pro → one refresh
+    await flush();
+    expect(refreshes).toBe(1);
+
+    // That refresh's token reauthorizes; its reconnect catches up again and
+    // finds pro, which the page already has.
+    setToken(jwt({ sub: 'user-1', tid: 'ws-1', aid: 'app-1', plan: 'pro', v: 3 }));
+    open();
+    await flush();
+    expect(billingFetches).toHaveLength(2);
+    expect(refreshes).toBe(1);
   });
 
   it('a genuine reconnect keeps its token catch-up and also repairs billing once', async () => {
