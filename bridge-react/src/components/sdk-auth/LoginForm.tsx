@@ -16,6 +16,7 @@ import { TenantSelector } from './TenantSelector';
 import { SsoButton } from './SsoButton';
 import { SsoProviderIcon } from './SsoProviderIcon';
 import { PasskeyLogin } from './PasskeyLogin';
+import { authErrorMessage, isOriginNotAllowed } from './shared/auth-error';
 
 interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'onError'> {
   showSignupLink?: boolean;
@@ -83,7 +84,37 @@ export function LoginForm({
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The auth state `error` was raised in (TBP-669). A failure that leaves the
+   * state where it was — an older auth-core keeps `credentials-validated`
+   * after a failed token exchange — must show the error, not the settling
+   * spinner; an error left over from an earlier attempt must not hijack a
+   * later sign-in that moved the state on. See the settling branch.
+   */
+  const [errorAtState, setErrorAtState] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  /**
+   * Record an error together with the state it was raised in. Read from the
+   * store, not the render's `authState`: a catch runs after the awaited call
+   * moved the state on, and the closure's copy is from before it.
+   */
+  function raise(message: string) {
+    setError(message);
+    setErrorAtState(useBridgeStore.getState().authState as string);
+  }
+
+  /**
+   * TBP-669 — an origin refusal inside MFA, workspace selection, a passkey or
+   * an SSO sign-in ends the sign-in: auth-core returns to `unauthenticated`,
+   * which unmounts the child that caught the error (and the passkey / SSO
+   * buttons show no error of their own). LoginForm keeps the message so the
+   * credentials form can show it. Other child errors stay with the child.
+   */
+  function handleChildError(err: Error) {
+    if (isOriginNotAllowed(err)) raise(authErrorMessage(err, t, 'login.error.invalidCredentials'));
+    onError?.(err);
+  }
 
   // Inline step machine — mirrors bridge-svelte. Forgot-password renders in
   // place of the credentials form (not a separate route) so the spec's
@@ -108,7 +139,7 @@ export function LoginForm({
       await getBridgeAuth().sendResetPasswordLink(email);
       setFpEmailSent(true);
     } catch (err: any) {
-      setError(err.message || t('forgot.error.send'));
+      raise(authErrorMessage(err, t, 'forgot.error.send'));
       onError?.(err);
     } finally {
       setFpLoading(false);
@@ -140,7 +171,7 @@ export function LoginForm({
     (getBridgeAuth() as any)
       .authenticateWithMagicLinkToken(magicToken)
       .catch((err: any) => {
-        setError(err.message || t('magicLink.error.auth'));
+        raise(authErrorMessage(err, t, 'magicLink.error.auth'));
         onError?.(err);
       })
       .finally(() => setLoading(false));
@@ -160,16 +191,16 @@ export function LoginForm({
     try {
       await getBridgeAuth().authenticate(email, password);
     } catch (err: any) {
-      setError(err.message || t('login.error.invalidCredentials'));
+      raise(authErrorMessage(err, t, 'login.error.invalidCredentials'));
       onError?.(err);
       setLoading(false);
     }
   }
 
-  if (authState === 'mfa-required') return <MfaChallenge onError={onError} messages={messages} />;
-  if ((authState as any) === 'mfa-setup-required') return <MfaSetup onError={onError} messages={messages} />;
+  if (authState === 'mfa-required') return <MfaChallenge onError={handleChildError} messages={messages} />;
+  if ((authState as any) === 'mfa-setup-required') return <MfaSetup onError={handleChildError} messages={messages} />;
   if (authState === 'tenant-selection')
-    return <TenantSelector onError={onError} messages={messages} />;
+    return <TenantSelector onError={handleChildError} messages={messages} />;
 
   // Settling: the session is real and the host app has not navigated yet.
   //
@@ -189,7 +220,13 @@ export function LoginForm({
   //
   // `login.submitting` is reused rather than given its own key: it already says
   // "Signing in…" in all twelve locales.
-  if (authState !== 'unauthenticated') {
+  //
+  // TBP-669: the one exception is a failure raised in the current state. With
+  // an auth-core that leaves the state at `credentials-validated` when the
+  // token exchange fails (a 403 "Origin not allowed" on stage), this branch
+  // showed "Signing in…" forever and the error never rendered. An error raised
+  // at this very state falls through to the credentials form, which shows it.
+  if (authState !== 'unauthenticated' && !(error && errorAtState === authState)) {
     return (
       <AuthFormWrapper heading={null} className={className} style={style} {...rest}>
         <div className="bridge-auth-settling" data-bridge-auth-settling>
@@ -339,7 +376,7 @@ export function LoginForm({
         <div className="bridge-sso-row">
           <PasskeyLogin
             onLogin={onLogin}
-            onError={onError}
+            onError={handleChildError}
             setupHref={passkeySetupHref}
             messages={messages}
             className="bridge-btn bridge-btn-secondary bridge-sso-btn"
@@ -375,7 +412,7 @@ export function LoginForm({
               connection={conn}
               mode={ssoMode}
               onSuccess={onLogin}
-              onError={onError}
+              onError={handleChildError}
               className="bridge-btn bridge-btn-secondary bridge-sso-btn"
               icon={<SsoProviderIcon type={conn.type} />}
             />

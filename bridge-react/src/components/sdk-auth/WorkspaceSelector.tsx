@@ -5,6 +5,7 @@ import { getBridgeAuth, useBridgeStore } from '../../core/bridge-instance';
 import { Alert } from './shared/Alert';
 import { Spinner } from './shared/Spinner';
 import { getTranslator } from '../../i18n';
+import { authErrorMessage } from './shared/auth-error';
 
 interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'onError'> {
   onSwitch?: () => void;
@@ -45,7 +46,7 @@ export function WorkspaceSelector({
         const ws = await (getBridgeAuth() as any).getWorkspaces();
         if (mounted) setWorkspaces(ws);
       } catch (err: any) {
-        if (mounted) setLoadError(err.message || t('workspace.error.load'));
+        if (mounted) setLoadError(authErrorMessage(err, t, 'workspace.error.load'));
       } finally {
         if (mounted) setLoadingList(false);
       }
@@ -63,7 +64,7 @@ export function WorkspaceSelector({
       await (getBridgeAuth() as any).switchWorkspace(workspace.id);
       onSwitch?.();
     } catch (err: any) {
-      setSwitchError(err.message || t('workspace.error.switch'));
+      setSwitchError(authErrorMessage(err, t, 'workspace.error.switch'));
       onError?.(err);
     } finally {
       setSwitchingId(null);
