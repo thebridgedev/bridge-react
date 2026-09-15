@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks/use-auth';
 import { getBridgeAuth, loadSubscription } from '../../core/bridge-instance';
 import { getRouterAdapter } from '../../utils/router-adapter';
-import { takeReturnTo } from '@nebulr-group/bridge-auth-core';
+import { sanitizeReturnTo, takeReturnTo } from '@nebulr-group/bridge-auth-core';
 
 export interface CallbackHandlerProps {
   /** Route to redirect to after a successful code exchange. @default '/' */
@@ -42,8 +42,14 @@ export function CallbackHandler({
     const sessionId = params.get('session_id');
     const stripeSuccess = params.has('stripe_success');
     const stripeCancel = params.has('stripe_cancel');
+    // `redirect` rides on the Stripe return URL, so whoever wrote that link
+    // controls it. The default router adapter navigates with
+    // `window.location.replace`, so an unchecked `https://…` or `//host` value
+    // would bounce the user off-site from our own callback: an open redirect.
+    // auth-core's `sanitizeReturnTo` admits only a same-origin path; anything
+    // else falls back to the default, like a missing value does.
     // Stripe may append its own ?session_id to the redirect destination — strip it.
-    const stripeRedirectTo = (params.get('redirect') ?? '/subscription').split('?')[0];
+    const stripeRedirectTo = (sanitizeReturnTo(params.get('redirect')) ?? '/subscription').split('?')[0];
 
     const router = getRouterAdapter();
 
