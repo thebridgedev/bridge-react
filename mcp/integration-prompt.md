@@ -40,6 +40,8 @@ VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
 
 `<BridgeProvider>` reads `VITE_BRIDGE_*` (Vite) and `REACT_APP_BRIDGE_*` (Create React App) automatically, and **env vars take priority over props**. Worth knowing when a config value you passed appears to be ignored.
 
+**For a non-production app, set `VITE_BRIDGE_API_BASE_URL` too.** It defaults to production, and the failure is silent: a stage or local app ID pointed at the production API does not exist there, so signup comes back `Not Found` with nothing in the console naming the real cause. Unlike the other Bridge SDKs, bridge-react takes this one from the environment rather than a `BridgeConfig` field — `apiBaseUrl` is not on the type.
+
 ## Step 3 — Mount the provider
 
 `<BridgeProvider>` mounts the Bridge runtime once for the whole app. It goes **above the router**:
