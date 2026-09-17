@@ -6,6 +6,24 @@ You are wiring **billing UI** into a React (Vite / CRA) application that uses Th
 
 The whole billing surface ships from the **main entry** `@nebulr-group/bridge-react` — there is no `/billing` subpath (only `.`, `/flags`, and `/styles` exist). Snippets below import from the main entry to match the demo app.
 
+## Decide first — which billing surface do you need?
+
+Billing is not one component. Pick the rows that match what the app has to do; most apps need the first three.
+
+| You want | Use | What it does |
+|---|---|---|
+| **The app unusable until the workspace has a plan** | `<BridgePaywall>` wrapping the app | Hard gate — renders a fullscreen `<PlanSelector>` while the session reports `shouldSelectPlan`, children only once a plan is active |
+| A page where users pick or change a plan | `<PlanSelector>` on your own route | Loads plans, marks the current one, free plan selects directly, paid plan launches Stripe Checkout |
+| To warn about payment failures, trials, cancellation | `<BridgeBillingNotice />` in the root layout | Renders nothing while billing is healthy; picks the right message and CTA per lifecycle state |
+| To show the current plan and status | `<BridgeSubscriptionStatus />` | Ready-made plan name + status badge |
+| A live usage counter against a quota | `<BridgeQuotaBanner metric="…" />` | Silent below 80% of the cap, warning at 80–94%, critical at ≥95%, ticks live |
+| A "Manage billing" button (payment method, invoices, cancel) | `getBridgeAuth().getBillingPortalUrl()`, gated on `canManageBilling()` | Returns a one-time Stripe portal URL to redirect to — call it at click time, do not cache |
+| To hide a feature the plan didn't buy | `bridge.tenant.entitlements` via `useBridgeReadable` (or `.can(key)` outside a component) | Entitlement read that fails closed and moves live on a plan change |
+
+**Two of these look interchangeable and are not.** If the requirement is "a user cannot use the app without a plan", a `<PlanSelector>` page does not deliver it — a page is something the user can navigate away from. `<BridgePaywall>` (or `billing.paywallRoute` on `<BridgeProvider>`) is the gate; the plan page is where they change plans afterwards. Shipping only the page means planless workspaces walk straight into the app.
+
+And **entitlements are not feature flags.** Entitlements describe what the workspace *bought*; flags describe what you have *exposed*. Gating a paid feature with a flag leaves it on for everyone the moment the flag flips.
+
 ## Prerequisites
 
 Verify before starting:

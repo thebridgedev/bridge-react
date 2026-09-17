@@ -2,6 +2,34 @@
 
 You are adding **Feature Flags** to a React application (Vite or CRA) that uses The Bridge. The goal is to ship code behind a switch you control from the Bridge dashboard — no redeploy needed.
 
+## Decide first — what are you gating?
+
+Pick the row that matches the thing being switched off. Every one of these is already built; none of them needs a flag fetch, a `useEffect`, or a cache of your own.
+
+| You are gating | Use | Import from |
+|---|---|---|
+| **A whole route** — a page or subtree the visitor must not reach | A small guard component built on `useFlag` + your router's redirect | `@nebulr-group/bridge-react/flags` |
+| Markup inside a page — a panel, a button, a banner | `<FeatureFlag flagKey=… defaultValue=…>` | either entry |
+| Behaviour or a value — which endpoint, a numeric limit, a JSON config | `useFlag(key, defaultValue, context?)` → `{ value, passed }` | either entry |
+| A read outside a component — event handler, plain module, a test | `evaluateFlag(key, defaultValue, context?)`, or `flagStore` to subscribe | either entry |
+| Anything on a server | **Nothing here.** This package ships a browser runtime only — there is no server-side evaluation in bridge-react | — |
+
+**The route case is the one to get right, so it is first.** bridge-react has no declarative `routeConfig`; you gate a route with a guard component — and the guard must read the flag through `useFlag`, not through a fetch of your own. A hand-rolled gate reads once, so an admin flipping the flag off leaves the route open until a reload; the guard reads the same local cache every render and closes the route on the next navigation, with no redeploy. The full pattern, including nesting it inside `<ProtectedRoute>`, is in `learning/feature-flags/using/guard-routes.md`:
+
+```tsx
+import { useFlag } from '@nebulr-group/bridge-react/flags';
+import { Navigate } from 'react-router-dom';
+
+function FlagRoute({ flag, redirectTo = '/', children }: {
+  flag: string; redirectTo?: string; children: React.ReactNode;
+}) {
+  const { value } = useFlag(flag, false);
+  return value ? <>{children}</> : <Navigate to={redirectTo} replace />;
+}
+```
+
+The flag surface ships from **both** the main entry `@nebulr-group/bridge-react` and the `@nebulr-group/bridge-react/flags` subpath, and they share one registry — pick either and stay consistent within a file. `/flags` is the flag-only barrel, without the auth UI on the import graph.
+
 ## Prerequisites check
 
 Before starting, verify that Bridge is set up in this project:
@@ -191,7 +219,7 @@ const { value: limit } = useFlag('upload-limit', 5);   // { value, passed }, re-
 
 `useFlag(key, defaultValue, context?)` returns `{ value, passed }` and is typed from `defaultValue` — `useFlag('pipeline_mode', 'stable')` gives a `string`, `useFlag('rate_limit', { window: 60 })` gives the JSON shape.
 
-For anything this prompt doesn't cover — the imperative `flagStore` for non-component code, realtime status, route guards — read `learning/feature-flags/feature-flags.md` in this repo rather than guessing an API.
+For anything this prompt doesn't cover — the imperative `flagStore` for non-component code, realtime status, the full route-guard patterns from *Decide first* — read `learning/feature-flags/feature-flags.md` in this repo rather than guessing an API.
 
 > Flags evaluate **client-side** in React today. There is no server-side evaluation in this SDK — this package ships a browser runtime only, so don't try to read a flag outside the browser.
 

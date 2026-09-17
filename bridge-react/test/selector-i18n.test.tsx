@@ -13,6 +13,8 @@
  * those is what a user in Swedish actually hits.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { TenantSelector } from '../src/components/sdk-auth/TenantSelector';
 import { WorkspaceSelector } from '../src/components/sdk-auth/WorkspaceSelector';
@@ -280,5 +282,128 @@ describe('LoginForm → TenantSelector fan-out (TBP-634)', () => {
     );
     expect(container.textContent).toContain('Välj kund');
     expect(container.textContent).not.toContain(sv['tenant.chooseHeading']);
+  });
+});
+
+describe('LoginForm → SsoButton fan-out (TBP-634)', () => {
+  it('lets a messages override on LoginForm reach the SSO button label', () => {
+    // SsoButton has always ACCEPTED `messages` — LoginForm just never handed it
+    // over, so an app rewording `sso.continueWith` once, at the form, silently
+    // got the catalogue default on every provider button.
+    boot('sv');
+    useBridgeStore.setState({ authState: 'unauthenticated' } as any);
+
+    const { container } = render(
+      <LoginForm
+        ssoConnections={[CONNECTION]}
+        messages={{ 'sso.continueWith': 'Fortsätt via {provider}' }}
+      />,
+    );
+
+    expect(container.textContent).toContain('Fortsätt via Google');
+    expect(container.textContent).not.toContain(
+      sv['sso.continueWith'].replace('{provider}', 'Google'),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// LoginForm fan-out, derived
+// ---------------------------------------------------------------------------
+
+/**
+ * The two describes above name their child. That is exactly the shape of the
+ * blind spot: TBP-634 was filed against TenantSelector, a hand-written case was
+ * added for TenantSelector, and SsoButton — one component over, with the same
+ * prop and the same omission — went on being missed for another release.
+ *
+ * So this one names nobody. It reads LoginForm's own source, takes the children
+ * it imports, keeps the ones whose OWN source declares a `messages` prop, and
+ * requires every render site of each to be handed `messages`. A child added
+ * tomorrow with a `messages` prop is inside the set the moment it is imported,
+ * whether or not anyone remembers to write a test for it.
+ *
+ * Reading source text is normally the wrong assertion — it can pass while the
+ * behaviour is broken. It is right HERE because the behavioural cases above
+ * cover today's children, and what this adds is the one thing a behavioural
+ * test cannot: coverage of the children that do not exist yet. The guard block
+ * keeps it from degrading into a test that passes on an empty set.
+ */
+const SDK_AUTH_DIR = join(import.meta.dir, '../src/components/sdk-auth');
+const LOGIN_FORM_SRC = readFileSync(join(SDK_AUTH_DIR, 'LoginForm.tsx'), 'utf8');
+
+/** Resolve a relative import specifier to a file on disk, or null. */
+function resolveImport(spec: string): string | null {
+  const base = resolve(SDK_AUTH_DIR, spec);
+  for (const candidate of [`${base}.tsx`, `${base}.ts`, join(base, 'index.tsx'), join(base, 'index.ts')]) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** Component-looking names LoginForm imports from relative modules, with their files. */
+function importedComponents(source: string): Array<{ name: string; file: string }> {
+  const out: Array<{ name: string; file: string }> = [];
+  const importRe = /import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+'(\.[^']+)'/g;
+  let m: RegExpExecArray | null;
+  while ((m = importRe.exec(source))) {
+    const file = resolveImport(m[2]);
+    if (!file) continue;
+    for (const raw of m[1].split(',')) {
+      // `type Foo` and `Foo as Bar` — JSX uses the local name, so take the last word.
+      const name = raw.trim().split(/\s+/).pop() ?? '';
+      if (/^[A-Z]\w*$/.test(name)) out.push({ name, file });
+    }
+  }
+  return out;
+}
+
+/**
+ * Every opening JSX tag for `name`, as source text.
+ *
+ * Walks to the tag's own closing `>` at brace depth 0, so a nested element in a
+ * prop (`icon={<SsoProviderIcon type={conn.type} />}`) does not end the tag
+ * early. Handles self-closing and non-self-closing alike.
+ */
+function openingTags(source: string, name: string): string[] {
+  const out: string[] = [];
+  const re = new RegExp(`<${name}(?=[\\s/>])`, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source))) {
+    let depth = 0;
+    let i = m.index + m[0].length;
+    for (; i < source.length; i++) {
+      const ch = source[i];
+      if (ch === '{') depth++;
+      else if (ch === '}') depth--;
+      else if (ch === '>' && depth === 0) break;
+    }
+    out.push(source.slice(m.index, i + 1));
+  }
+  return out;
+}
+
+const translatableChildren = importedComponents(LOGIN_FORM_SRC)
+  .filter(({ file }) => /\bmessages\?:/.test(readFileSync(file, 'utf8')))
+  .filter(({ name }) => openingTags(LOGIN_FORM_SRC, name).length > 0)
+  .map(({ name }) => name);
+
+describe('LoginForm fans messages to every child that takes it (TBP-634)', () => {
+  it('derived the child list, and the list is sane', () => {
+    // Without this, a regex that stopped matching would leave an empty set and
+    // the loop below would pass by having nothing to check. Both anchors are
+    // real omissions: TenantSelector is the one TBP-634 was filed for, SsoButton
+    // the one that survived it.
+    expect(translatableChildren.length).toBeGreaterThanOrEqual(3);
+    expect(translatableChildren).toContain('TenantSelector');
+    expect(translatableChildren).toContain('SsoButton');
+  });
+
+  it.each(translatableChildren)('passes messages to %s at every render site', (name) => {
+    const tags = openingTags(LOGIN_FORM_SRC, name);
+    expect(tags.length).toBeGreaterThan(0);
+    for (const tag of tags) {
+      expect(tag).toContain('messages={messages}');
+    }
   });
 });
