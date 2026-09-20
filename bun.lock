@@ -14,7 +14,7 @@
     },
     "bridge-react": {
       "name": "@nebulr-group/bridge-react",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "dependencies": {
         "jose": "^6.0.10",
         "jwt-decode": "^4.0.0",
@@ -22,7 +22,7 @@
       },
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.10.6",
-        "@nebulr-group/bridge-auth-core": "0.7.0",
+        "@nebulr-group/bridge-auth-core": "0.7.1",
         "@rollup/plugin-terser": "^0.4.4",
         "@rollup/plugin-typescript": "^11.1.6",
         "@testing-library/dom": "^10.4.1",
@@ -35,7 +35,7 @@
         "typescript": "^5.4.0",
       },
       "peerDependencies": {
-        "@nebulr-group/bridge-auth-core": ">=0.7.0-beta.0 <1.0.0",
+        "@nebulr-group/bridge-auth-core": ">=0.7.1 <1.0.0",
         "react": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
         "react-dom": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
       },
@@ -214,7 +214,7 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
-    "@nebulr-group/bridge-auth-core": ["@nebulr-group/bridge-auth-core@0.7.0", "", { "dependencies": { "jose": "^6.2.3" } }, "sha512-KRbfNikDw2dndigEMoLpjLoFkVseBjXkA5Ccg+0l5hibEn+XNXYHqs71lQ3UxrVft6OCRBWIdxnVJBrbcf0jYA=="],
+    "@nebulr-group/bridge-auth-core": ["@nebulr-group/bridge-auth-core@0.7.1", "", { "dependencies": { "jose": "^6.2.3" } }, "sha512-WWanmAvEOJGpGWFvZ3WiCRvijVRnJpj+IjfNHJOVp9lhB6iuUELBgCtrf1gY2idewRxX036tuhpSpkMFa24XPA=="],
 
     "@nebulr-group/bridge-react": ["@nebulr-group/bridge-react@workspace:bridge-react"],
 
