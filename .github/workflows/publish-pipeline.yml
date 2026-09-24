@@ -22,8 +22,6 @@ jobs:
       setup-pnpm: false
       install-command: bun install
       build-command: bun run build
-    secrets:
-      docs-sync-key: ${{ secrets.DOCS_SYNC_KEY }}
 
 
 
