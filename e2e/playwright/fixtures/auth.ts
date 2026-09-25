@@ -60,7 +60,6 @@ export async function loginViaBridgeAuth(
   envConfig: EnvironmentConfig
 ): Promise<void> {
   await page.goto('/login');
-  await page.waitForLoadState('networkidle');
 
   const loginButton = page
     .locator('button:has-text("Login with bridge"), button:has-text("Login")')
@@ -127,7 +126,10 @@ export async function loginViaBridgeAuth(
     { timeout: LONG_TIMEOUT }
   ).catch(() => {});
 
-  await page.waitForLoadState('networkidle');
+  // The branch below reads page.url(), so the landed document must be parsed.
+  // domcontentloaded states exactly that and always fires; network idle never
+  // would — the demo holds a persistent realtime WebSocket (TBP-721/TBP-605).
+  await page.waitForLoadState('domcontentloaded');
 
   if (page.url().includes('/choose-user') || page.url().includes('/chooseTenantUser')) {
     const workspaceButtons = page.locator('button:has(h3)');
@@ -137,31 +139,45 @@ export async function loginViaBridgeAuth(
     await page.waitForURL((url) => !url.pathname.includes('/choose-user'), { timeout: LONG_TIMEOUT }).catch(() => {});
   }
 
-  await page.waitForLoadState('networkidle');
-
-  // Verify tokens are stored. auth-core namespaces the storage key as
-  // `bridge_tokens:<appId>` (the legacy single-string `bridge_access_token`
+  // Wait for what the login is actually waiting for: the OAuth callback
+  // exchanging the code and storing tokens. auth-core namespaces the storage key
+  // as `bridge_tokens:<appId>` (the legacy single-string `bridge_access_token`
   // key is gone after the unified-core hard-replace) — match by prefix.
-  const hasTokens = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find(
-      (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
-    );
-    if (!key) return false;
-    const raw = localStorage.getItem(key);
-    if (!raw) return false;
-    try {
-      const tokens = JSON.parse(raw);
-      return !!tokens?.accessToken;
-    } catch {
-      return false;
-    }
-  });
+  const hasTokens = await page
+    .waitForFunction(
+      () => {
+        const key = Object.keys(localStorage).find(
+          (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+        );
+        if (!key) return false;
+        const raw = localStorage.getItem(key);
+        if (!raw) return false;
+        try {
+          return !!JSON.parse(raw)?.accessToken;
+        } catch {
+          return false;
+        }
+      },
+      undefined,
+      { timeout: LONG_TIMEOUT },
+    )
+    .then(() => true)
+    .catch(() => false);
 
   if (!hasTokens) {
     throw new Error(
       `Login appeared to succeed but no bridge_tokens:<appId> in localStorage. URL: ${page.url()}`,
     );
   }
+
+  // Tokens land while the browser is still on /auth/oauth-callback; the
+  // CallbackHandler then navigates to the post-login route. Returning before
+  // that navigation commits hands the caller a page whose next `goto()` is
+  // "interrupted by another navigation" — so wait for the round-trip to land.
+  await page.waitForURL((url) => !url.pathname.startsWith('/auth/oauth-callback'), {
+    timeout: LONG_TIMEOUT,
+  });
+  await page.waitForLoadState('domcontentloaded');
 }
 
 /**
@@ -179,7 +195,6 @@ export async function loginViaSdkAuth(
   console.log(`[sdk-login] Starting SDK login for ${email}`);
 
   await page.goto('/auth/login');
-  await page.waitForLoadState('networkidle');
 
   const emailInput = page.locator('#login-email');
   await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });

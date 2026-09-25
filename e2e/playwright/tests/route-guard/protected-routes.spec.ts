@@ -8,8 +8,8 @@ import { MED_TIMEOUT } from '../../fixtures/timeouts';
 test.describe('Protected routes', () => {
   test('unauthenticated user is redirected when visiting protected page', async ({ page }) => {
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle');
 
+    // toHaveURL is web-first: it waits for the guard's redirect to land.
     await expect(page).toHaveURL((url) =>
       url.pathname.includes('/auth') || url.pathname.includes('/login') || page.url().includes('url/login')
     );
@@ -21,7 +21,6 @@ test.describe('Protected routes', () => {
   }) => {
     const page = authenticatedPage;
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle');
 
     await expect(page).toHaveURL((url) => url.pathname.includes('dashboard'));
     const body = page.locator('body');
