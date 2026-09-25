@@ -138,6 +138,46 @@ export function applyEntitlementsChanged(msg: { entitlements?: unknown } | null 
   useSnapshotStore.setState({ tenantEntitlements: { ...(map as Record<string, boolean>) } });
 }
 
+/**
+ * TBP-686 — apply a snapshot the runtime fetched itself (`GET /session/init`)
+ * after a realtime connect, and report what it changed. A lost push only needs
+ * the route guard re-run and a token refresh when it carried a plan, status or
+ * entitlements change; the rest of the snapshot (branding, tenant id/name,
+ * user) just fills the slices. Same write semantics as `applySessionSnapshot`.
+ *
+ * A slice that was EMPTY before is hydration, not a change: the catch-up
+ * stands in for a lost `session.snapshot` push, and a delivered push fills the
+ * slices without notifying anyone or refreshing the token. Counting the fill
+ * as a change would cost an extra refresh + socket swap on most first
+ * connects. Only a known value that differs afterwards is a change.
+ */
+export function applyCatchUpSnapshot(data: SessionSnapshotData): {
+  planChanged: boolean;
+  entitlementsChanged: boolean;
+} {
+  const before = useSnapshotStore.getState();
+  applySessionSnapshot(data);
+  const after = useSnapshotStore.getState();
+  const subBefore = before.tenantSubscription;
+  const subAfter = after.tenantSubscription;
+  return {
+    planChanged:
+      subBefore != null &&
+      ((subBefore.plan?.slug ?? null) !== (subAfter?.plan?.slug ?? null) ||
+        (subBefore.status ?? null) !== (subAfter?.status ?? null)),
+    entitlementsChanged:
+      before.tenantEntitlements != null && !sameFlags(before.tenantEntitlements, after.tenantEntitlements),
+  };
+}
+
+function sameFlags(a: Record<string, boolean> | null, b: Record<string, boolean> | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((k) => a[k] === b[k]);
+}
+
 /** Test-only: reset every snapshot slice to `null`. */
 export function __resetSnapshotStores(): void {
   useSnapshotStore.setState({
