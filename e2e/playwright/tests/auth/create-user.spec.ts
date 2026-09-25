@@ -14,7 +14,8 @@ test.describe('Create User (Sign Up) Flow', () => {
     page,
     testDataClient,
   }) => {
-    const signupEmail = `playwright-test-signup-${Date.now()}@thebridge.io`;
+    // Safe-sender test pattern: purgeable by bridge-api, and never bounces (TBP-721).
+    const signupEmail = `iman+playwright-test-signup-${Date.now()}@nebulr.group`;
 
     try {
       await page.goto('/auth/signup');

@@ -1,8 +1,8 @@
 /**
  * Live Channel Unification (TBP-326) — Playwright spec for the unified `bridge`
  * read surface. Ported to bridge-react from bridge-nextjs/bridge-svelte; the
- * demo exposes the same Svelte-store-compatible `window.bridge` so the
- * assertions are identical.
+ * demo exposes the same Svelte-store-compatible `window.bridge` (see
+ * BridgeWindowExpose) so the assertions are identical.
  *
  * Verifies the end-to-end snapshot flow:
  *   1. After authenticated bootstrap completes, `bridge.tenant.id` resolves to a
@@ -12,15 +12,24 @@
  *   4. `bridge.tenant.entitlements.can(...)` answers synchronously.
  *   5. `bridge.app.plans` is lazy (null) before .load(); resolves after.
  *
- * Assumes the existing playwright auth fixture is mounted (matches the pattern
- * used by `bridge-init.spec.ts`).
+ * Every assertion here reads a slice of the AUTHENTICATED session snapshot —
+ * `bridge.tenant`, `bridge.user`, the entitlement map, and `bridge.app.plans`
+ * (whose `load()` calls `BridgeAuth.getPlans`, which throws `Not authenticated`
+ * without a session). So each test takes `authenticatedPage`, not `page`.
+ *
+ * TBP-721: the file was ported with the plain `page` fixture, so on stage all
+ * three tests read an anonymous page — `waitForFunction` never resolving,
+ * `app_active` false, and `getPlans` throwing `Not authenticated`. Same defect
+ * and same fix as bridge-svelte TBP-607.
  */
 
 import { test, expect } from '../../fixtures/auth';
 import { MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
-  test('snapshot lands and populates bridge.tenant + bridge.user', async ({ page }) => {
+  test('snapshot lands and populates bridge.tenant + bridge.user', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
 
     // The demo exposes `window.bridge` for e2e access (see BridgeWindowExpose).
@@ -57,7 +66,9 @@ test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
     expect(value.user.tenantId).toBe(value.tenantId);
   });
 
-  test('entitlements.can() answers from the snapshot map', async ({ page }) => {
+  test('entitlements.can() answers from the snapshot map', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
 
     const canApp = await page.waitForFunction(
@@ -74,7 +85,9 @@ test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
     expect(value).toEqual({ app_active: true });
   });
 
-  test('bridge.app.plans is lazy — null until .load(), populated after', async ({ page }) => {
+  test('bridge.app.plans is lazy — null until .load(), populated after', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
 
     // What the first evaluate needs is `window.bridge`, so wait for that — not

@@ -34,8 +34,10 @@ test.describe('SDK Signup', () => {
     page,
     testDataClient,
   }) => {
-    // Generate a fresh playwright-test email so the test data API can find the verification token
-    const email = `playwright-test-signup-${Date.now()}@thebridge.io`;
+    // bridge-api's test-data endpoints (verification link, purge) only act on the
+    // `iman+playwright-test-*@nebulr.group` pattern — and a safe-sender address
+    // keeps real signup mail from bouncing off a domain nobody reads (TBP-721).
+    const email = `iman+playwright-test-signup-${Date.now()}@nebulr.group`;
 
     await page.goto('/auth/signup');
 
@@ -63,8 +65,8 @@ test.describe('SDK Signup', () => {
     page,
     testDataClient,
   }) => {
-    // Use a playwright-test-* email — the API requires this prefix for verification link retrieval
-    const email = `playwright-test-full-${Date.now()}@thebridge.io`;
+    // The verification-link endpoint only serves `iman+playwright-test-*@nebulr.group`.
+    const email = `iman+playwright-test-full-${Date.now()}@nebulr.group`;
     const newPassword = 'TestPass123!';
 
     // Step 1: Fill and submit signup form

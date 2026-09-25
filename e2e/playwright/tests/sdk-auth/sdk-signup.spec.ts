@@ -7,10 +7,9 @@ test.describe('SDK Signup', () => {
 
     const emailInput = page.locator('#signup-email');
     await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
-    // bridge-api accepts signups from the `playwright-test-*@thebridge.io`
-    // pattern (matches the test-data harness's expected email shape — same
-    // pattern the passing sibling `sdk-signup-full.spec.ts:35` uses).
-    await emailInput.fill(`playwright-test-signup-${Date.now()}@thebridge.io`);
+    // The safe-sender test pattern bridge-api's purge matches, so the account
+    // this creates is cleaned up and its signup mail never bounces (TBP-721).
+    await emailInput.fill(`iman+playwright-test-sdk-${Date.now()}@nebulr.group`);
 
     await page.locator('#signup-first-name').fill('Test');
     await page.locator('#signup-last-name').fill('User');

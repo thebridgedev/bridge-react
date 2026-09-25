@@ -321,6 +321,56 @@ export class TestDataClient {
   }
 
   /**
+   * Generates a fresh password reset link for a test account, so specs can open
+   * `/auth/set-password/<token>` without intercepting email. Ported from
+   * bridge-svelte — `sdk-set-password.spec.ts` called it, but react's client
+   * never had it (`getPasswordResetLink is not a function`, TBP-721).
+   */
+  async getPasswordResetLink(
+    email: string,
+    originUrl?: string,
+    appDomain?: string,
+  ): Promise<{ link: string; token: string }> {
+    const params = new URLSearchParams({ email, appDomain: appDomain ?? this.appDomain });
+    if (originUrl) params.set('originUrl', originUrl);
+
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/password-reset-link?${params}`, {
+      method: 'GET',
+      headers: { 'x-playwright-api-key': this.apiKey },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to get password reset link: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Retrieves the signup verification link for a Playwright test account (the
+   * link that would normally be emailed). The account email must match
+   * `iman+playwright-test-*@nebulr.group`. Ported from bridge-svelte.
+   */
+  async getSignupVerificationLink(email: string): Promise<{ link: string; token: string }> {
+    const params = new URLSearchParams({ email, appDomain: this.appDomain });
+    const response = await fetch(
+      `${this.baseUrl}/account/test/playwright/signup-verification-link?${params}`,
+      {
+        method: 'GET',
+        headers: { 'x-playwright-api-key': this.apiKey },
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to get signup verification link: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
    * Clears a tenant's plan, putting it in the "never onboarded" state so the
    * paywall redirect fires (ported from bridge-svelte, TBP-370).
    *
