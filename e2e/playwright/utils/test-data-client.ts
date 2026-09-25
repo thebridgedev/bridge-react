@@ -1,4 +1,8 @@
-import type { EnvironmentConfig } from '../config/environments';
+import {
+  DEFAULT_PROD_API_BASE_URL,
+  DEFAULT_STAGE_API_BASE_URL,
+  type EnvironmentConfig,
+} from '../config/environments';
 
 export interface PlaywrightTestAccount {
   email: string;
@@ -163,6 +167,7 @@ export class TestDataClient {
     paymentsAutoRedirect?: boolean;
     stripeEnabled?: boolean;
     redirectUris?: string[];
+    allowedOrigins?: string[];
     defaultCallbackUri?: string;
     stripePublicKey?: string;
     stripeSecretKey?: string;
@@ -316,19 +321,24 @@ export class TestDataClient {
   }
 }
 
-export function createTestDataClientFromEnv(): TestDataClient {
+/**
+ * @param appDomain - Target a specific app domain instead of `APP_DOMAIN`.
+ *   global-setup uses this while it provisions apps, before `BRIDGE_TEST_APP_ID`
+ *   exists (so `getEnvironmentConfig()` cannot be used yet).
+ */
+export function createTestDataClientFromEnv(appDomain?: string): TestDataClient {
   const projectName = process.env.PLAYWRIGHT_PROJECT_NAME || '';
   let testDataApiUrl: string;
   if (projectName.includes('prod')) {
-    testDataApiUrl = process.env.PROD_TEST_DATA_API_URL || '';
+    testDataApiUrl = process.env.PROD_TEST_DATA_API_URL || DEFAULT_PROD_API_BASE_URL;
   } else if (projectName.includes('stage')) {
-    testDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || '';
+    testDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || DEFAULT_STAGE_API_BASE_URL;
   } else {
     testDataApiUrl = process.env.LOCAL_TEST_DATA_API_URL || 'http://localhost:3200';
   }
 
   const testDataApiKey = process.env.PLAYWRIGHT_TEST_API_KEY;
-  const appDomain = process.env.APP_DOMAIN || 'BRIDGE_REACT_TEST_DASHBOARD';
+  const resolvedAppDomain = appDomain || process.env.APP_DOMAIN || 'BRIDGE_REACT_TEST_DASHBOARD';
 
   if (!testDataApiKey) {
     throw new Error('PLAYWRIGHT_TEST_API_KEY environment variable is required');
@@ -341,7 +351,7 @@ export function createTestDataClientFromEnv(): TestDataClient {
     testDataApiUrl,
     testDataApiKey,
     appId: process.env.BRIDGE_TEST_APP_ID || '',
-    appDomain,
+    appDomain: resolvedAppDomain,
     isContainer: false,
   });
 }

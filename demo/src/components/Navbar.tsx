@@ -1,6 +1,16 @@
-import { Login, ProfileName, useAuth } from '@nebulr-group/bridge-react';
+import { Login, ProfileName, getBridgeAuth, useAuth } from '@nebulr-group/bridge-react';
 import { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
+import { getDemoEnvironment } from '../utils/env';
+
+/** The app id the SDK actually initialized with (env beats props in the provider). */
+function resolvedAppId(): string {
+  try {
+    return getBridgeAuth().getApiContext().appId ?? '';
+  } catch {
+    return '';
+  }
+}
 
 interface NavItem {
   label: string;
@@ -37,6 +47,12 @@ function Navbar() {
     <header className="nav-bar">
       <div className="nav-inner">
         <div className="nav-brand">bridge React Demo</div>
+        {/* Which backend this build talks to, and with which app. The Playwright
+            global-setup asserts both against the project it is running, so a
+            demo started in the wrong --mode fails loudly (TBP-721). */}
+        <span className="pill env-pill" data-env={getDemoEnvironment()} data-app-id={resolvedAppId()}>
+          {getDemoEnvironment()}
+        </span>
         <nav className="nav-links">
           {filteredItems.map((item) => (
             <NavLink

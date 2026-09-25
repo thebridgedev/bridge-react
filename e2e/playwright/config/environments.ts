@@ -17,6 +17,23 @@ export interface EnvironmentConfig {
   isContainer: boolean;
 }
 
+/**
+ * Public, fixed endpoints for the hosted environments. Defaults rather than
+ * required settings, so a clean checkout can run the stage/prod suites without
+ * hand-writing config first (TBP-721, mirrors bridge-svelte TBP-606). Override
+ * via STAGE_* / PROD_* when pointing the suite at a different backend.
+ */
+export const DEFAULT_STAGE_API_BASE_URL = 'https://api-stage.thebridge.dev';
+export const DEFAULT_PROD_API_BASE_URL = 'https://api.thebridge.dev';
+
+/**
+ * Where the demo is served — must agree with `playwright.config.ts`, which
+ * starts it on HARNESS_PORT (default 3001) unless LOCAL_BASE_URL overrides.
+ */
+export function harnessBaseUrl(): string {
+  return process.env.LOCAL_BASE_URL || `http://localhost:${process.env.HARNESS_PORT || '3001'}`;
+}
+
 function isRunningInContainer(): boolean {
   if (process.env.DOCKER === 'true' || process.env.IN_DOCKER === 'true') return true;
   try {
@@ -54,7 +71,7 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
 
   const baseUrl = isContainer
     ? getServiceUrl('bridge-react', 3001, 3001, isContainer)
-    : process.env.LOCAL_BASE_URL || 'http://localhost:3001';
+    : harnessBaseUrl();
 
   const appId = requireEnv('BRIDGE_TEST_APP_ID');
 
@@ -84,13 +101,14 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
       };
     }
     case 'stage': {
-      const stageTestDataApiUrl = requireEnv('STAGE_TEST_DATA_API_URL');
+      const stageTestDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || DEFAULT_STAGE_API_BASE_URL;
+      const stageApiBaseUrl = process.env.STAGE_API_BASE_URL || stageTestDataApiUrl;
       return {
         name: 'stage',
         baseUrl,
-        authBaseUrl: requireEnv('STAGE_AUTH_BASE_URL'),
-        cloudViewsUrl: requireEnv('STAGE_CLOUD_VIEWS_URL'),
-        apiBaseUrl: stageTestDataApiUrl,
+        authBaseUrl: process.env.STAGE_AUTH_BASE_URL || `${stageApiBaseUrl}/auth`,
+        cloudViewsUrl: process.env.STAGE_CLOUD_VIEWS_URL || `${stageApiBaseUrl}/cloud-views`,
+        apiBaseUrl: stageApiBaseUrl,
         testDataApiUrl: stageTestDataApiUrl,
         testDataApiKey,
         appId,
@@ -99,7 +117,7 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
       };
     }
     case 'prod': {
-      const prodTestDataApiUrl = requireEnv('PROD_TEST_DATA_API_URL');
+      const prodTestDataApiUrl = process.env.PROD_TEST_DATA_API_URL || DEFAULT_PROD_API_BASE_URL;
       return {
         name: 'prod',
         baseUrl,
