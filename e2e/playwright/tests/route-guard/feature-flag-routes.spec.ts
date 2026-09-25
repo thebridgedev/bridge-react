@@ -2,7 +2,7 @@
  * Feature-flag related routes — feature-flags page loads.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/auth';
 import { LONG_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Feature flag routes', () => {

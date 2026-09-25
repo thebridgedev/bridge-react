@@ -23,7 +23,7 @@
  * a React app.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from '../../fixtures/auth';
 import { MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Feature flags — dev-supplied per-call attributes (TBP-178)', () => {

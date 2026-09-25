@@ -1,10 +1,11 @@
 import type { Browser, BrowserContext, Page } from '@playwright/test';
-import * as path from 'path';
+import { currentWorkerApp } from './worker-app';
 
 /**
- * A context with no auth tokens — but still carrying the run's app id
+ * A context with no auth tokens — but still carrying THIS worker's app id
  * (`bridge:appId`, seeded by global-setup). Without it the demo would boot with
- * whatever VITE_BRIDGE_APP_ID says, which on stage is nothing at all (TBP-721).
+ * whatever VITE_BRIDGE_APP_ID says, which on stage is nothing at all, and a
+ * worker would read one app's settings while its fixtures wrote another's.
  */
 
 export async function createCleanContext(browser: Browser): Promise<{
@@ -13,7 +14,7 @@ export async function createCleanContext(browser: Browser): Promise<{
   cleanup: () => Promise<void>;
 }> {
   const context = await browser.newContext({
-    storageState: path.resolve(__dirname, '../.auth/base-state.json'),
+    storageState: currentWorkerApp().storageStatePath,
   });
   const page = await context.newPage();
   return {

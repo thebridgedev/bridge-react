@@ -319,6 +319,35 @@ export class TestDataClient {
 
     return response.json();
   }
+
+  /**
+   * Clears a tenant's plan, putting it in the "never onboarded" state so the
+   * paywall redirect fires (ported from bridge-svelte, TBP-370).
+   *
+   * `createPlaywrightTestAccount` binds every new tenant to a TEAM trial, so a
+   * fresh fixture account reports `shouldSelectPlan: false`. Use this instead of
+   * deleting the app's TEAM plan and recreating it in a `finally` — that mutates
+   * app state every other test depends on.
+   */
+  async clearTenantPlan(
+    tenantId: string,
+  ): Promise<{ shouldSelectPlan: boolean; shouldSetupPayments: boolean; plan?: string }> {
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/clear-tenant-plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-playwright-api-key': this.apiKey,
+      },
+      body: JSON.stringify({ appDomain: this.appDomain, tenantId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to clear tenant plan: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
 }
 
 /**
