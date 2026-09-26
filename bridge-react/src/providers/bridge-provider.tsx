@@ -1,6 +1,15 @@
 import { FC, ReactNode, useEffect, useRef } from 'react';
 import { BridgeConfig } from '../types/config';
-import { ensureAppConfig, getBridgeAuth, initBridge, markReady, setBridgeConfig } from '../core/bridge-instance';
+import {
+  ensureAppConfig,
+  getBridgeAuth,
+  getBridgeConfig,
+  initBridge,
+  isStripeCheckoutReturn,
+  markReady,
+  settleCheckoutConfirmation,
+  setBridgeConfig,
+} from '../core/bridge-instance';
 import { startBridgeRuntime, stopBridgeRuntime } from '../core/bridge-runtime';
 import { createBridgeFlags, type BridgeFlagsBundle } from '../flags/bootstrap';
 import { RealtimeDevBadge } from '../components/developer/RealtimeDevBadge';
@@ -32,6 +41,22 @@ function getEnvVar(name: string): string | undefined {
     return ((import.meta as any).env as any)[`VITE_${name}`];
   }
   return undefined;
+}
+
+/**
+ * Pathname of the resolved auth callback URL — where <CallbackHandler> (and
+ * the Stripe checkout return) lives. Falls back to the default path.
+ */
+function callbackPath(): string {
+  const callbackUrl = getBridgeConfig()?.callbackUrl;
+  if (callbackUrl) {
+    try {
+      return new URL(callbackUrl, window.location.origin).pathname;
+    } catch {
+      /* malformed — fall through to the default */
+    }
+  }
+  return DEFAULT_CALLBACK_PATH;
 }
 
 /**
@@ -221,24 +246,37 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
   // Redirects to the configured paywall route only when:
   //   - billing.paywallRoute is configured
   //   - the current path is not already the paywall route (no redirect loop)
+  //   - the current page is not the auth callback route / a Stripe return
+  //   - no Stripe checkout confirmation is still in flight
   //   - the tenant is authenticated but has not selected a plan
   //   - the app has not opted out via paymentsAutoRedirect: false
-  // getSubscriptionStatus() self-heals after a Stripe round-trip: when a
-  // checkout session_id is present (URL or sessionStorage), auth-core syncs the
-  // completed session server-side first, so shouldSelectPlan reads false and a
-  // freshly-paid user is NOT bounced back to the paywall.
+  //
+  // TBP-723 — the decision reads the `shouldSelectPlan` claim off the CURRENT
+  // access token (auth-core TBP-368, zero network); it does not re-fetch the
+  // subscription status. On the Stripe return that token predates the payment
+  // and still says "select a plan", so checking here sent the paying customer
+  // to the paywall ~20 ms after bootstrap and the navigation aborted
+  // <CallbackHandler>'s confirm-checkout. bridge-svelte's bootstrap confirms
+  // the checkout on the callback route first and enforces the paywall after;
+  // React keeps the same order: the callback route is left to
+  // <CallbackHandler>, which confirms (refreshing the token) and then runs the
+  // paywall check itself, and anywhere else the check waits for a pending
+  // confirmation to settle before reading the token.
   useEffect(() => {
     if (typeof window === 'undefined' || !paywallRoute) return;
-    if (window.location.pathname === paywallRoute) return;
+    const { pathname, search } = window.location;
+    if (pathname === paywallRoute) return;
+    if (pathname === callbackPath() || isStripeCheckoutReturn(search)) return;
 
     let cancelled = false;
     void (async () => {
       try {
+        await settleCheckoutConfirmation();
+        if (cancelled) return;
         const bridge = getBridgeAuth();
-        // shouldRedirectToPaywall (auth-core) bundles the auth check + subscription
-        // status fetch + the shouldSelectPlan/paymentsAutoRedirect decision (TBP-369),
-        // shared with bridge-svelte/nextjs/angular. getSubscriptionStatus() still
-        // self-heals after a Stripe round-trip, so a freshly-paid user isn't bounced.
+        // shouldRedirectToPaywall (auth-core) bundles the auth check + the
+        // shouldSelectPlan/paymentsAutoRedirect decision (TBP-369), shared with
+        // bridge-svelte/nextjs/angular.
         const should = await bridge.shouldRedirectToPaywall();
         if (cancelled) return;
         if (should) {

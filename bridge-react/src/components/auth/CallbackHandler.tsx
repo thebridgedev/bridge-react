@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks/use-auth';
-import { getBridgeAuth, loadSubscription } from '../../core/bridge-instance';
+import { confirmCheckout, getBridgeAuth, getBridgeConfig, loadSubscription } from '../../core/bridge-instance';
 import { getRouterAdapter } from '../../utils/router-adapter';
 import { sanitizeReturnTo, takeReturnTo } from '@nebulr-group/bridge-auth-core';
 
@@ -71,6 +71,24 @@ export function CallbackHandler({
       if (value != null) preservedQuery[name] = value;
     });
 
+    // TBP-723 — the paywall check for a Stripe return runs HERE, after the
+    // checkout is confirmed, not in <BridgeProvider>'s mount effect (which
+    // skips the callback route). Same order as bridge-svelte's bootstrap:
+    // confirm → token refresh → paywall. With the refreshed token a paid
+    // tenant reads shouldSelectPlan:false and lands on its destination; a
+    // tenant that still has to pick a plan (e.g. a cancelled checkout) goes to
+    // the paywall, as the next page's bootstrap check would have sent it.
+    const redirectAfterCheckout = async (destination: string) => {
+      const paywallRoute = getBridgeConfig()?.billing?.paywallRoute;
+      if (paywallRoute && destination !== paywallRoute) {
+        const should = await getBridgeAuth()
+          .shouldRedirectToPaywall()
+          .catch(() => false); // fail open, like the provider's check
+        if (should) return redirect(paywallRoute);
+      }
+      return redirect(destination);
+    };
+
     const process = async () => {
       try {
         // Stripe Checkout return — confirm the session with bridge-api (which
@@ -83,16 +101,18 @@ export function CallbackHandler({
           // reads shouldSelectPlan:false. It throws on a non-OK response or network
           // error → caught below → paymentErrorRoute. (TBP-369: shared with
           // bridge-svelte so the HTTP + token-refresh logic lives in one place.)
-          const bridge = getBridgeAuth();
-          await bridge.confirmStripeCheckout(sessionId);
+          //
+          // `confirmCheckout` registers the confirmation so the provider's
+          // paywall check waits for it instead of racing it (TBP-723).
+          await confirmCheckout(sessionId);
           // Refresh the global subscription store so the destination page
           // (e.g. PlanSelector on /subscription) renders the now-active plan
           // instead of stale "select a plan" state.
           await loadSubscription().catch(() => {});
-          return redirect(stripeRedirectTo);
+          return await redirectAfterCheckout(stripeRedirectTo);
         }
         if (stripeCancel) {
-          return redirect(stripeRedirectTo);
+          return await redirectAfterCheckout(stripeRedirectTo);
         }
 
         if (callbackError) {

@@ -268,6 +268,53 @@ export async function loadSubscription(): Promise<void> {
   }
 }
 
+// ── Stripe checkout return (TBP-723) ──────────────────────────────────────────
+//
+// On the Stripe return the access token still predates the payment, so its
+// `shouldSelectPlan` claim reads true until confirm-checkout has refreshed it.
+// auth-core's `shouldRedirectToPaywall()` trusts that claim (TBP-368, zero
+// network), so a paywall check taken before the confirmation settles sends a
+// paying customer back to the plan picker — and that navigation aborts the
+// confirmation itself. bridge-svelte avoids this by ordering: its bootstrap
+// confirms the checkout on the callback route and only then enforces the
+// paywall. React's confirm (in <CallbackHandler>) and paywall check (in
+// <BridgeProvider>) live in different components, so the ordering is kept
+// here: the confirmation is registered, and the paywall check waits for it.
+
+let _checkoutConfirmation: { sessionId: string; promise: Promise<void> } | null = null;
+
+/**
+ * True when `search` is a Stripe Checkout success return (`?stripe_success`
+ * with a `session_id`) — the URL `<PlanSelector>` builds for `success_url`.
+ */
+export function isStripeCheckoutReturn(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return params.has('stripe_success') && !!params.get('session_id');
+}
+
+/**
+ * Confirm a completed Stripe Checkout session (auth-core
+ * `confirmStripeCheckout`: server-side verify + token refresh) and register it
+ * as pending so the paywall check waits for it. Idempotent per session id —
+ * a second call joins the first confirmation instead of posting again.
+ * Rejects when the confirmation fails; the caller owns the error UX.
+ */
+export function confirmCheckout(sessionId: string): Promise<void> {
+  if (_checkoutConfirmation?.sessionId === sessionId) return _checkoutConfirmation.promise;
+  const promise = getBridgeAuth().confirmStripeCheckout(sessionId);
+  _checkoutConfirmation = { sessionId, promise };
+  return promise;
+}
+
+/**
+ * Resolves once any registered checkout confirmation has settled (success or
+ * failure — never rejects); resolves immediately when none is registered.
+ */
+export async function settleCheckoutConfirmation(): Promise<void> {
+  const pending = _checkoutConfirmation?.promise;
+  if (pending) await pending.catch(() => {});
+}
+
 // ── Lazy proxy accessor (matches svelte's `auth` export) ──────────────────────
 
 /** Lazy proxy to the BridgeAuth singleton — call methods directly: `auth.getToken()`, `auth.logout()`, etc. */
@@ -286,6 +333,7 @@ export function _resetBridgeInstance(): void {
   _instance = null;
   _resolvedConfig = null;
   _appConfigPromise = null;
+  _checkoutConfirmation = null;
   _resolveReady = null;
   useBridgeStore.setState({
     tokens: null,
