@@ -61,7 +61,8 @@
   "dependencies": {
     "jose": "^6.0.10",
     "jwt-decode": "^4.0.0",
-    "zustand": "^4.5.0"
+    "zustand": "^4.5.0",
+    "@nebulr-group/bridge-auth-core": "wt1"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.10.6",
