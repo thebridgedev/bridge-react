@@ -36,6 +36,7 @@ import {
   RealtimeClient,
   fetchBillingState,
   type BillingSubscriptionState,
+  type QuotaSnapshot,
   type RealtimeClientConfig,
   type RealtimeStatus,
   type SessionSnapshotMessage,
@@ -45,10 +46,12 @@ import {
 
 import { getBridgeAuth, useBridgeStore } from './bridge-instance';
 import {
+  applyCatchUpSnapshot,
   applyEntitlementsChanged,
   applySessionSnapshot,
   applySubscriptionPlanChanged,
   useSnapshotStore,
+  type SessionSnapshotData,
 } from './snapshot-stores';
 import { bridgeEvents } from './events';
 import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
@@ -100,7 +103,7 @@ const _onAuthorizationChangeSubs = new Set<(reason: BridgeAuthorizationChangeRea
 //
 // `refresh` (TBP-654, upgrade race): whether this change needs a new token.
 // A new token IS the refreshed state; a reconnect needs one only when its
-// billing catch-up recovered a plan change (see catchUpAfterReconnect).
+// catch-up recovered a plan change (see runCatchUp).
 function authorizationChanged(
   reason: BridgeAuthorizationChangeReason,
   { refresh = reason !== 'token' && reason !== 'reconnect' }: { refresh?: boolean } = {},
@@ -152,44 +155,189 @@ function startRefresh(): Promise<unknown> {
 // in 1 of 8 stage runs against bridge-svelte). A reconnect we caused skips the
 // token catch-up (it is already current), so nothing else repaired the plan.
 //
-// So after EVERY reconnect, including one caused by reauthorize(), fetch the
+// So after EVERY open, including one caused by reauthorize(), fetch the
 // billing state once and apply it to both subscription surfaces: auth-core's
 // `useBridge().subscription` (notice, gate, PlanSelector) and
-// `bridge.tenant.subscription`. Entitlements, branding and user ride the
-// `session.snapshot` the server re-publishes on every resubscribe.
+// `bridge.tenant.subscription`.
 //
-// Loop safety: the catch-up never touches tokens, so it cannot cause another
-// reauthorize. One fetch per reconnect; a newer reconnect's catch-up
-// supersedes an older one still in flight, and a stopped runtime applies
-// nothing.
+// TBP-686 — and re-read the session snapshot and the watched quotas alongside
+// it (see catchUpSessionSnapshot / catchUpQuotaSnapshots), on the FIRST open
+// too. setOnOpen fires only once the subscribe is acknowledged: anything
+// published before that is already in the database, so a REST read sees it,
+// and anything published after arrives on the socket.
+//
+// Loop safety: the catch-up never touches tokens (plain fetch — react wraps no
+// global fetch — with the socket's own token), so it cannot cause another
+// reauthorize. Rounds are serialized by the gate in startBridgeRuntime; this
+// counter only marks a round stale when the runtime stops or is reset.
 let _catchUpSeq = 0;
 
-//
-// TBP-654 — a catch-up that recovers a plan change needs the token carrying
-// it, like the push it replaces, unless this reconnect already started a
-// refresh (a genuine reconnect does, after the missed push, so its token has
-// the plan). Only an actual change refreshes: the reconnect that refreshed
-// token causes finds the plan unchanged, so this cannot loop.
-async function catchUpAfterReconnect(refreshedAtReconnect: boolean): Promise<void> {
-  const seq = ++_catchUpSeq;
+/** What one catch-up round recovered, for the authorization notification. */
+interface CatchUpChanges {
+  planChanged: boolean;
+  entitlementsChanged: boolean;
+}
+
+/**
+ * The billing half. Resolves `undefined` when it applied nothing (signed out,
+ * failed, stale, or no plan in the answer), else whether the plan changed.
+ */
+async function catchUpBillingState(isStale: () => boolean): Promise<boolean | undefined> {
   // The token the socket itself is using — BridgeAuth's may lag behind it.
   const accessToken = _currentAuthToken;
   const { apiBaseUrl, appId } = resolveApiContext();
-  if (!accessToken || !appId) return; // signed out: no workspace billing to repair
+  if (!accessToken || !appId) return undefined; // signed out: no workspace billing to repair
   let state: BillingSubscriptionState;
   try {
     state = await fetchBillingState({ apiBaseUrl, accessToken, appId });
   } catch (err) {
     // Best-effort: the next push or reconnect gets another chance.
-    logger.debug('[bridge-runtime] reconnect billing catch-up failed:', err);
-    return;
+    logger.debug('[bridge-runtime] billing catch-up failed:', err);
+    return undefined;
   }
-  if (seq !== _catchUpSeq || !_realtime) return;
-  if (!state || typeof state.plan?.slug !== 'string') return; // nothing authoritative to apply
-  const planChanged = useSnapshotStore.getState().tenantSubscription?.plan?.slug !== state.plan.slug;
+  if (isStale()) return undefined;
+  if (!state || typeof state.plan?.slug !== 'string') return undefined; // nothing authoritative to apply
+  // An empty slice is hydration, not a change (see runCatchUp).
+  const known = useSnapshotStore.getState().tenantSubscription?.plan?.slug;
+  const planChanged = known != null && known !== state.plan.slug;
   try { useBillingBridge().subscription.hydrate(state); } catch { /* billing surface optional */ }
   try { applySubscriptionPlanChanged({ to: state?.plan, status: state?.status }); } catch { /* defensive */ }
-  authorizationChanged('reconnect', { refresh: planChanged && !refreshedAtReconnect });
+  return planChanged;
+}
+
+/**
+ * TBP-686 — the session-snapshot half. The server publishes `session.snapshot`
+ * fire-and-forget during authorize, BEFORE the subscription is live, so on a
+ * first connect it routinely loses the race and nothing replays it: tenant
+ * id/name, branding and the snapshot user stayed null for the whole session.
+ * `GET /session/init` returns the same payload.
+ */
+async function catchUpSessionSnapshot(isStale: () => boolean): Promise<CatchUpChanges> {
+  const none: CatchUpChanges = { planChanged: false, entitlementsChanged: false };
+  const token = _currentAuthToken;
+  if (!token || typeof globalThis.fetch !== 'function') return none;
+  const { apiBaseUrl, appId } = resolveApiContext();
+  try {
+    const res = await globalThis.fetch(`${apiBaseUrl.replace(/\/+$/, '')}/session/init`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, 'x-app-id': appId ?? '' },
+    });
+    if (!res.ok) return none;
+    const data = (await res.json()) as SessionSnapshotData;
+    // Stopped, or the session changed while this was in flight: the answer
+    // describes a session we no longer have. A token change reauthorizes, and
+    // that reconnect catches up again with the right token.
+    if (isStale() || _currentAuthToken !== token) return none;
+    const changes = applyCatchUpSnapshot(data);
+    if (changes.entitlementsChanged && data?.tenant?.entitlements) {
+      // Keep auth-core's copy (what flag targeting reads) in step too.
+      try { useBillingBridge().entitlementsStore?.applyEntitlementsChanged(data.tenant.entitlements); } catch { /* defensive */ }
+    }
+    return changes;
+  } catch (err) {
+    logger.debug('[bridge-runtime] session snapshot catch-up failed:', err);
+    return none;
+  }
+}
+
+// `GET /usage/quota/:metric` — the same body auth-core's own lazy hydrate
+// reads, and the same shape `applyInitialSnapshot` takes. `policy` and the
+// TBP-275 overage fields are optional because an older bridge-api omits them.
+type QuotaCatchUpBody =
+  | (Omit<QuotaSnapshot, 'percent_used' | 'policy' | 'label'> & { policy?: 'hard' | 'metered' })
+  | null;
+
+/**
+ * TBP-686 — the quota half, for the one live payload the session snapshot
+ * does not carry: `quota.updated`. auth-core's QuotaStore reads a metric once
+ * (lazy `GET /usage/quota/:metric` on first read) and afterwards moves only on
+ * pushes, so a push lost across a socket swap — every token refresh
+ * reauthorizes and swaps it — froze `used` for the rest of the session, with
+ * no error anywhere (seen on stage in bridge-svelte's metered specs).
+ *
+ * Only metrics the store already holds: a page that never read a quota has
+ * nothing stale to repair and pays nothing. Best-effort per metric.
+ */
+async function catchUpQuotaSnapshots(isStale: () => boolean): Promise<void> {
+  const token = _currentAuthToken;
+  if (!token || typeof globalThis.fetch !== 'function') return;
+  let quotas: ReturnType<typeof useBillingBridge>['quotas'];
+  let metrics: string[];
+  try {
+    quotas = useBillingBridge().quotas;
+    metrics = [...quotas.getAll().keys()];
+  } catch {
+    return; // no billing bridge or no quota surface — nothing to repair
+  }
+  if (metrics.length === 0) return;
+  const { apiBaseUrl, appId } = resolveApiContext();
+  const base = apiBaseUrl.replace(/\/+$/, '');
+
+  await Promise.all(
+    metrics.map(async (metric) => {
+      // The value this repair replaces. A push that lands while the GET is in
+      // flight is NEWER than the answer and must win, or the repair itself
+      // would reintroduce a stale `used`.
+      const before = quotas.getAll().get(metric);
+      try {
+        const res = await globalThis.fetch(`${base}/usage/quota/${encodeURIComponent(metric)}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}`, 'x-app-id': appId ?? '' },
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as QuotaCatchUpBody;
+        if (isStale() || _currentAuthToken !== token) return; // a workspace we no longer have
+        if (quotas.getAll().get(metric) !== before) return; // a push won the race
+        // `null` is a real answer ("no quota configured") and drops the entry.
+        quotas.applyInitialSnapshot(metric, data ?? null);
+      } catch {
+        // One metric failing must not skip the others.
+      }
+    }),
+  );
+}
+
+/**
+ * One catch-up round: all three halves in parallel, then ONE authorization
+ * notification for whatever they recovered.
+ *
+ * TBP-654 — a recovered plan change needs the token carrying it, like the push
+ * it replaces, unless this round's reconnect already started a refresh (a
+ * genuine reconnect does, after the missed push, so its token has the plan).
+ * Only an actual change refreshes: the reconnect that refreshed token causes
+ * finds the plan unchanged, so this cannot loop.
+ *
+ * TBP-686 — "change" means a known value that moved. Filling an EMPTY slice is
+ * hydration: the catch-up stands in for a lost `session.snapshot` push, and a
+ * delivered push fills the slices without notifying anyone or refreshing. A
+ * first connect whose push was lost must cost no more than one whose push
+ * arrived — no refresh, no reauthorize, no second socket swap.
+ */
+async function runCatchUp(
+  { reconnect, refreshedAtReconnect }: { reconnect: boolean; refreshedAtReconnect: boolean },
+  isStale: () => boolean,
+): Promise<void> {
+  const [billingPlanChanged, snapshot] = await Promise.all([
+    catchUpBillingState(isStale),
+    catchUpSessionSnapshot(isStale),
+    catchUpQuotaSnapshots(isStale),
+  ]);
+  if (isStale()) return;
+  const planChanged = billingPlanChanged === true || snapshot.planChanged;
+  const refresh = planChanged && !refreshedAtReconnect;
+  if (reconnect) {
+    // Today's reconnect contract: gate caches drop once the billing catch-up
+    // lands (and now also when the snapshot recovered something it missed).
+    if (billingPlanChanged !== undefined || planChanged || snapshot.entitlementsChanged) {
+      authorizationChanged('reconnect', { refresh });
+    }
+  } else if (planChanged) {
+    // TBP-686 — a first connect is not a reconnect: speak up only when the
+    // catch-up actually moved plan/status or entitlements.
+    authorizationChanged('subscription.plan_changed', { refresh });
+  } else if (snapshot.entitlementsChanged) {
+    authorizationChanged('entitlements.changed', { refresh });
+  }
 }
 
 /**
@@ -253,6 +401,43 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
   // Set just before _realtime.reauthorize() so the resulting reconnect's
   // setOnOpen knows the token is already fresh and skips its proactive refresh.
   let _reauthInFlight = false;
+
+  // TBP-686 — one coalescing gate for every catch-up half. One round per open;
+  // opens that land while a round is in flight fold into ONE follow-up (the
+  // in-flight answer may predate the newest socket going live, so it cannot
+  // stand in for it). An open storm therefore costs one extra round, not one
+  // per open. The follow-up is a reconnect / already refreshed if ANY of the
+  // opens it folds was.
+  const rt = _realtime;
+  let _catchUpInFlight = false;
+  let _catchUpQueued: { reconnect: boolean; refreshedAtReconnect: boolean } | undefined;
+  const requestCatchUp = (round: { reconnect: boolean; refreshedAtReconnect: boolean }): void => {
+    // A stopped (or replaced) runtime must never fetch: its queued follow-up
+    // would read the NEXT session's token.
+    if (_realtime !== rt) return;
+    if (!_currentAuthToken) return; // signed out: no tenant or user scope to fetch
+    if (_catchUpInFlight) {
+      _catchUpQueued = {
+        reconnect: round.reconnect || !!_catchUpQueued?.reconnect,
+        refreshedAtReconnect: round.refreshedAtReconnect || !!_catchUpQueued?.refreshedAtReconnect,
+      };
+      return;
+    }
+    _catchUpInFlight = true;
+    const seq = _catchUpSeq;
+    const isStale = () => seq !== _catchUpSeq || _realtime !== rt;
+    void runCatchUp(round, isStale)
+      .catch(() => {
+        // Every half is best-effort already; this backstop keeps a repair
+        // failure from surfacing as an unhandled rejection in the host app.
+      })
+      .finally(() => {
+        _catchUpInFlight = false;
+        const next = _catchUpQueued;
+        _catchUpQueued = undefined;
+        if (next) requestCatchUp(next);
+      });
+  };
   _realtime.setOnOpen(() => {
     _setRealtimeStatus('open');
     // On reconnect (not initial connect), proactively refresh tokens to sync
@@ -274,10 +459,17 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
       if (_currentAuthToken && !pendingAuthorizationChange()) void trackAuthorizationChange(refresh);
       else refresh.catch(() => { /* best-effort */ });
     }
-    // TBP-660 — but the billing catch-up runs on EVERY reconnect, including
+    // TBP-660 — but the state catch-up runs on EVERY reconnect, including
     // the ones reauthorize() causes: those are exactly the swaps a plan
     // change's own push can fall into.
-    if (_connectedOnce) void catchUpAfterReconnect(refreshNow);
+    //
+    // TBP-686 — and on the FIRST connect too. Gating it on `_connectedOnce`
+    // reserved the repair for reconnects, but the first connect is exactly
+    // where the snapshot goes missing (published during authorize, before the
+    // subscription is live), leaving a signed-in page with a null workspace
+    // id, name and branding all session. requestCatchUp returns early when
+    // signed out and coalesces concurrent opens.
+    requestCatchUp({ reconnect: _connectedOnce, refreshedAtReconnect: refreshNow });
     _connectedOnce = true;
     for (const fn of _onOpenSubs) {
       try { fn(); } catch { /* subscriber errors swallowed */ }
@@ -481,7 +673,7 @@ export async function stopBridgeRuntime(): Promise<void> {
   const client = _realtime;
   _realtime = undefined;
   _currentAuthToken = undefined;
-  _catchUpSeq += 1; // an in-flight reconnect catch-up must not land after stop
+  _catchUpSeq += 1; // an in-flight catch-up must not land after stop
   clearPendingAuthorizationChange();
   if (client) {
     try { await client.stop(); } catch { /* already stopped, ignore */ }
