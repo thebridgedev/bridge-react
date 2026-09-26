@@ -12,7 +12,6 @@ test.describe('Auth login and logout', () => {
     const { page, cleanup } = await createCleanContext(browser);
     try {
       await page.goto('/login');
-      await page.waitForLoadState('networkidle');
 
       const loginButton = page
         .locator('button:has-text("Login with bridge"), button:has-text("Login")')
@@ -34,7 +33,6 @@ test.describe('Auth login and logout', () => {
   }) => {
     const page = authenticatedPage;
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     await expect(
       page.getByRole('link', { name: /team|dashboard|profile/i }).first()
@@ -47,11 +45,10 @@ test.describe('Auth login and logout', () => {
   test('logout clears state and shows login again', async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     const logoutButton = page.getByRole('button', { name: /logout/i });
     await logoutButton.click();
-    await page.waitForLoadState('networkidle');
+    // The assertion below is web-first and waits for the logged-out UI.
 
     // After logout: home shows link "Start authentication flow", or we're on /login with "Login with bridge" button
     const loginLink = page.getByRole('link', { name: /Start authentication flow/i });

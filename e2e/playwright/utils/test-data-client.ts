@@ -1,4 +1,8 @@
-import type { EnvironmentConfig } from '../config/environments';
+import {
+  DEFAULT_PROD_API_BASE_URL,
+  DEFAULT_STAGE_API_BASE_URL,
+  type EnvironmentConfig,
+} from '../config/environments';
 
 export interface PlaywrightTestAccount {
   email: string;
@@ -163,6 +167,7 @@ export class TestDataClient {
     paymentsAutoRedirect?: boolean;
     stripeEnabled?: boolean;
     redirectUris?: string[];
+    allowedOrigins?: string[];
     defaultCallbackUri?: string;
     stripePublicKey?: string;
     stripeSecretKey?: string;
@@ -314,21 +319,105 @@ export class TestDataClient {
 
     return response.json();
   }
+
+  /**
+   * Generates a fresh password reset link for a test account, so specs can open
+   * `/auth/set-password/<token>` without intercepting email. Ported from
+   * bridge-svelte — `sdk-set-password.spec.ts` called it, but react's client
+   * never had it (`getPasswordResetLink is not a function`, TBP-721).
+   */
+  async getPasswordResetLink(
+    email: string,
+    originUrl?: string,
+    appDomain?: string,
+  ): Promise<{ link: string; token: string }> {
+    const params = new URLSearchParams({ email, appDomain: appDomain ?? this.appDomain });
+    if (originUrl) params.set('originUrl', originUrl);
+
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/password-reset-link?${params}`, {
+      method: 'GET',
+      headers: { 'x-playwright-api-key': this.apiKey },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to get password reset link: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Retrieves the signup verification link for a Playwright test account (the
+   * link that would normally be emailed). The account email must match
+   * `iman+playwright-test-*@nebulr.group`. Ported from bridge-svelte.
+   */
+  async getSignupVerificationLink(email: string): Promise<{ link: string; token: string }> {
+    const params = new URLSearchParams({ email, appDomain: this.appDomain });
+    const response = await fetch(
+      `${this.baseUrl}/account/test/playwright/signup-verification-link?${params}`,
+      {
+        method: 'GET',
+        headers: { 'x-playwright-api-key': this.apiKey },
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to get signup verification link: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Clears a tenant's plan, putting it in the "never onboarded" state so the
+   * paywall redirect fires (ported from bridge-svelte, TBP-370).
+   *
+   * `createPlaywrightTestAccount` binds every new tenant to a TEAM trial, so a
+   * fresh fixture account reports `shouldSelectPlan: false`. Use this instead of
+   * deleting the app's TEAM plan and recreating it in a `finally` — that mutates
+   * app state every other test depends on.
+   */
+  async clearTenantPlan(
+    tenantId: string,
+  ): Promise<{ shouldSelectPlan: boolean; shouldSetupPayments: boolean; plan?: string }> {
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/clear-tenant-plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-playwright-api-key': this.apiKey,
+      },
+      body: JSON.stringify({ appDomain: this.appDomain, tenantId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to clear tenant plan: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
 }
 
-export function createTestDataClientFromEnv(): TestDataClient {
+/**
+ * @param appDomain - Target a specific app domain instead of `APP_DOMAIN`.
+ *   global-setup uses this while it provisions apps, before `BRIDGE_TEST_APP_ID`
+ *   exists (so `getEnvironmentConfig()` cannot be used yet).
+ */
+export function createTestDataClientFromEnv(appDomain?: string): TestDataClient {
   const projectName = process.env.PLAYWRIGHT_PROJECT_NAME || '';
   let testDataApiUrl: string;
   if (projectName.includes('prod')) {
-    testDataApiUrl = process.env.PROD_TEST_DATA_API_URL || '';
+    testDataApiUrl = process.env.PROD_TEST_DATA_API_URL || DEFAULT_PROD_API_BASE_URL;
   } else if (projectName.includes('stage')) {
-    testDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || '';
+    testDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || DEFAULT_STAGE_API_BASE_URL;
   } else {
     testDataApiUrl = process.env.LOCAL_TEST_DATA_API_URL || 'http://localhost:3200';
   }
 
   const testDataApiKey = process.env.PLAYWRIGHT_TEST_API_KEY;
-  const appDomain = process.env.APP_DOMAIN || 'BRIDGE_REACT_TEST_DASHBOARD';
+  const resolvedAppDomain = appDomain || process.env.APP_DOMAIN || 'BRIDGE_REACT_TEST_DASHBOARD';
 
   if (!testDataApiKey) {
     throw new Error('PLAYWRIGHT_TEST_API_KEY environment variable is required');
@@ -341,7 +430,7 @@ export function createTestDataClientFromEnv(): TestDataClient {
     testDataApiUrl,
     testDataApiKey,
     appId: process.env.BRIDGE_TEST_APP_ID || '',
-    appDomain,
+    appDomain: resolvedAppDomain,
     isContainer: false,
   });
 }

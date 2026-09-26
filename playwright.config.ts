@@ -34,6 +34,8 @@ export default defineConfig({
   ],
   use: {
     baseURL: HARNESS_URL,
+    // Written by global-setup: seeds the demo's `bridge:appId` (TBP-721).
+    storageState: path.resolve(__dirname, 'e2e/playwright/.auth/base-state.json'),
     trace: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'retain-on-failure',
     screenshot: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'only-on-failure',
     headless: process.env.PLAYWRIGHT_HEADED !== 'true',

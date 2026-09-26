@@ -16,6 +16,10 @@ dist-ssr
 doc/
 .env
 .env.*
+# The stage/prod E2E env files hold only public endpoints and must exist on a
+# clean checkout (TBP-721). `.env.test.local` stays untracked: pre-setup writes it.
+!.env.test.stage
+!.env.test.prod
 
 # Editor directories and files
 .vscode/*

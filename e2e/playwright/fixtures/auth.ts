@@ -10,27 +10,77 @@ import {
 } from '../config/environments';
 import { type PlaywrightTestAccount, TestDataClient } from '../utils/test-data-client';
 import { LONG_TIMEOUT, MED_TIMEOUT } from './timeouts';
+import {
+  BASELINE_APP_CONFIG,
+  isBaselineConfig,
+  markAppConfigDirty,
+  takeAppConfigDirty,
+  workerAppFor,
+  type WorkerApp,
+} from './worker-app';
 
 export interface AuthFixtures {
   testUser: PlaywrightTestAccount;
   authenticatedPage: Page;
   envConfig: EnvironmentConfig;
   testDataClient: TestDataClient;
+  /** The Bridge app this worker owns — see fixtures/worker-app.ts (TBP-721). */
+  workerApp: WorkerApp;
+  /**
+   * Auto-use guard that puts this worker's app back on {@link BASELINE_APP_CONFIG}
+   * when the previous test in this worker left it off it.
+   */
+  appConfigBaseline: void;
 }
 
 export const test = base.extend<AuthFixtures>({
-  envConfig: async ({}, use) => {
-    const env = getCurrentEnvironment();
-    const config = getEnvironmentConfig(env);
-    await use(config);
+  // The Bridge app provisioned for this worker by global-setup.
+  workerApp: async ({}, use, testInfo) => {
+    await use(workerAppFor(testInfo.parallelIndex));
   },
 
+  // Every browser context in this worker boots the demo with THIS worker's app
+  // id (seeded as localStorage `bridge:appId`), which is what keeps one worker's
+  // app-level writes invisible to another. Overrides the config-level default.
+  storageState: async ({ workerApp }, use) => {
+    await use(workerApp.storageStatePath);
+  },
+
+  // Environment configuration, narrowed to this worker's app.
+  envConfig: async ({ workerApp }, use) => {
+    const env = getCurrentEnvironment();
+    const config = getEnvironmentConfig(env);
+    await use({ ...config, appId: workerApp.appId, appDomain: workerApp.appDomain });
+  },
+
+  // `configureApp` is wrapped so the baseline guard knows whether anything
+  // actually needs undoing, instead of resetting on every test.
   testDataClient: async ({ envConfig }, use) => {
     const client = new TestDataClient(envConfig);
+    const configureApp = client.configureApp.bind(client);
+    client.configureApp = async (config) => {
+      if (!isBaselineConfig(config)) markAppConfigDirty();
+      return configureApp(config);
+    };
     await use(client);
   },
 
-  testUser: async ({ testDataClient }, use) => {
+  // Restore the app-level baseline when — and only when — a previous test in
+  // this worker moved off it. Safe because the app is this worker's alone and
+  // tests within a worker run serially.
+  appConfigBaseline: [
+    async ({ testDataClient }, use) => {
+      if (takeAppConfigDirty()) {
+        await testDataClient.configureApp({ ...BASELINE_APP_CONFIG }).catch(() => {});
+      }
+      await use();
+    },
+    { auto: true },
+  ],
+
+  testUser: async ({ testDataClient, appConfigBaseline }, use) => {
+    // Depended on, not used: orders the reset before the account is created.
+    void appConfigBaseline;
     const account = await testDataClient.createTestAccount();
     await use(account);
     try {
@@ -60,7 +110,6 @@ export async function loginViaBridgeAuth(
   envConfig: EnvironmentConfig
 ): Promise<void> {
   await page.goto('/login');
-  await page.waitForLoadState('networkidle');
 
   const loginButton = page
     .locator('button:has-text("Login with bridge"), button:has-text("Login")')
@@ -127,7 +176,10 @@ export async function loginViaBridgeAuth(
     { timeout: LONG_TIMEOUT }
   ).catch(() => {});
 
-  await page.waitForLoadState('networkidle');
+  // The branch below reads page.url(), so the landed document must be parsed.
+  // domcontentloaded states exactly that and always fires; network idle never
+  // would — the demo holds a persistent realtime WebSocket (TBP-721/TBP-605).
+  await page.waitForLoadState('domcontentloaded');
 
   if (page.url().includes('/choose-user') || page.url().includes('/chooseTenantUser')) {
     const workspaceButtons = page.locator('button:has(h3)');
@@ -137,31 +189,45 @@ export async function loginViaBridgeAuth(
     await page.waitForURL((url) => !url.pathname.includes('/choose-user'), { timeout: LONG_TIMEOUT }).catch(() => {});
   }
 
-  await page.waitForLoadState('networkidle');
-
-  // Verify tokens are stored. auth-core namespaces the storage key as
-  // `bridge_tokens:<appId>` (the legacy single-string `bridge_access_token`
+  // Wait for what the login is actually waiting for: the OAuth callback
+  // exchanging the code and storing tokens. auth-core namespaces the storage key
+  // as `bridge_tokens:<appId>` (the legacy single-string `bridge_access_token`
   // key is gone after the unified-core hard-replace) — match by prefix.
-  const hasTokens = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find(
-      (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
-    );
-    if (!key) return false;
-    const raw = localStorage.getItem(key);
-    if (!raw) return false;
-    try {
-      const tokens = JSON.parse(raw);
-      return !!tokens?.accessToken;
-    } catch {
-      return false;
-    }
-  });
+  const hasTokens = await page
+    .waitForFunction(
+      () => {
+        const key = Object.keys(localStorage).find(
+          (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+        );
+        if (!key) return false;
+        const raw = localStorage.getItem(key);
+        if (!raw) return false;
+        try {
+          return !!JSON.parse(raw)?.accessToken;
+        } catch {
+          return false;
+        }
+      },
+      undefined,
+      { timeout: LONG_TIMEOUT },
+    )
+    .then(() => true)
+    .catch(() => false);
 
   if (!hasTokens) {
     throw new Error(
       `Login appeared to succeed but no bridge_tokens:<appId> in localStorage. URL: ${page.url()}`,
     );
   }
+
+  // Tokens land while the browser is still on /auth/oauth-callback; the
+  // CallbackHandler then navigates to the post-login route. Returning before
+  // that navigation commits hands the caller a page whose next `goto()` is
+  // "interrupted by another navigation" — so wait for the round-trip to land.
+  await page.waitForURL((url) => !url.pathname.startsWith('/auth/oauth-callback'), {
+    timeout: LONG_TIMEOUT,
+  });
+  await page.waitForLoadState('domcontentloaded');
 }
 
 /**
@@ -179,7 +245,6 @@ export async function loginViaSdkAuth(
   console.log(`[sdk-login] Starting SDK login for ${email}`);
 
   await page.goto('/auth/login');
-  await page.waitForLoadState('networkidle');
 
   const emailInput = page.locator('#login-email');
   await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
