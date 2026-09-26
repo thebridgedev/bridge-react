@@ -186,6 +186,18 @@ test.describe('Welcome Paywall — first-time user flow', () => {
         await zipInput.fill('12345');
       }
 
+      // TBP-723 — record every page the app shows once Stripe hands back. The
+      // old bug sent the customer to /welcome while <CallbackHandler> was still
+      // confirming the checkout. Depending on who wins that race the run can
+      // still END on the right page, so the end state alone does not catch it;
+      // the route history does.
+      const returnPaths: string[] = [];
+      page.on('framenavigated', (frame) => {
+        if (frame !== page.mainFrame()) return;
+        const url = new URL(frame.url());
+        if (!url.hostname.includes('stripe.com')) returnPaths.push(url.pathname);
+      });
+
       const submitButton = page.locator('button[type="submit"], .SubmitButton').first();
       await submitButton.click();
 
@@ -206,9 +218,11 @@ test.describe('Welcome Paywall — first-time user flow', () => {
       const postCheckoutUrl = page.url();
       const postCheckoutPath = new URL(postCheckoutUrl).pathname;
 
-      // ---- 7. We must NOT have been bounced back to /welcome.
+      // ---- 7. We must NOT have been bounced back to /welcome — not at the end,
+      //         and not on the way (TBP-723).
       expect(postCheckoutPath).not.toBe('/welcome');
       expect(postCheckoutUrl).not.toContain('stripe.com');
+      expect(returnPaths, `route history after Stripe: ${returnPaths.join(' → ')}`).not.toContain('/welcome');
 
       // ---- 8. Bonus: navigating to a fresh protected route should now succeed.
       await page.goto('/protected');
