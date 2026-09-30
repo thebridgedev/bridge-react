@@ -2,7 +2,16 @@
 
 Give users a "Manage billing" entry point to the **Stripe billing portal**, where they can update their payment method, view invoices, or cancel. Bridge exposes the portal as a REST endpoint: `GET /account/subscription/portal` returns a one-time `portalUrl` to redirect to.
 
-The SDK wraps it: `getBridgeAuth().getBillingPortalUrl()` returns the one-time URL. It builds the request from the configured API base URL and attaches the signed-in user's token and app ID for you, so the same code works on stage and local dev. Call it at click time — the portal session is short-lived, so don't cache the result.
+`<BillingPortalButton>` is that button, ready-made. It fetches a one-time portal URL at click time and follows it, and renders only for someone who can act on it: the workspace owner, on an app with payments on, whose workspace already has a plan. The subscription page `<BridgeBillingRoutes>` serves at `/subscription` already shows it.
+
+```tsx
+import { BillingPortalButton } from '@nebulr-group/bridge-react';
+
+<BillingPortalButton />                       {/* "Manage billing" */}
+<BillingPortalButton label="Billing & invoices" className="my-button" />
+```
+
+To build your own, the SDK wraps the endpoint: `getBridgeAuth().getBillingPortalUrl()` returns the one-time URL. It builds the request from the configured API base URL and attaches the signed-in user's token and app ID for you, so the same code works on stage and local dev. Call it at click time — the portal session is short-lived, so don't cache the result.
 
 ```tsx
 import { getBridgeAuth } from '@nebulr-group/bridge-react';
@@ -22,4 +31,4 @@ Only the workspace owner may open the portal. `getBridgeAuth().canManageBilling(
 
 See [Subscriptions & Entitlements → Open the billing portal](/api-reference/subscriptions/#open-the-billing-portal) for the endpoint reference.
 
-> **Recovering from a billing problem?** You don't need this button for that. When a workspace (called a *tenant* in the API) is past due, in dunning, or billing-locked, `<BridgeBillingNotice />` already renders a recovery CTA (it sends the user to your billing page, `/billing` by default). Use this "Manage billing" button for the healthy, everyday case. See [Warn about billing problems](/billing/status/billing-notices/).
+> **Recovering from a billing problem?** You don't need this button for that. When a workspace (called a *tenant* in the API) is past due, in dunning, or billing-locked, `<BridgeBillingNotice />` already renders a recovery CTA (it sends the user to your subscription page, `billing.manageRoute`, `/subscription` by default). Use this "Manage billing" button for the healthy, everyday case. See [Warn about billing problems](/billing/status/billing-notices/).

@@ -12,6 +12,13 @@ const external = [
   // Optional peer — dynamically imported by <PlanSelector> only for hosted
   // Stripe Checkout. Consumers install it themselves; keep it external.
   "@stripe/stripe-js",
+  // Passkey ceremonies (TBP-743 / TBP-515 S3): a regular dependency, loaded
+  // on first use.
+  "@simplewebauthn/browser",
+  // Optional peers (TBP-743) — only the router-adapter entries import them, so
+  // an app without that router never resolves them.
+  "react-router",
+  "@tanstack/react-router",
 ];
 
 // ONE build with both entries (TBP-665). The main entry (auth + payments +
@@ -31,6 +38,10 @@ export default {
   input: {
     index: "src/index.ts",
     "flags/index": "src/flags/index.ts",
+    // Router adapters (TBP-743): separate entries, so neither router is a
+    // dependency of the main entry.
+    "react-router/index": "src/react-router/index.tsx",
+    "tanstack-router/index": "src/tanstack-router/index.tsx",
   },
   output: [
     {

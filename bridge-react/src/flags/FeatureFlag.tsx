@@ -17,6 +17,7 @@
 import { ReactNode } from 'react';
 import type { EvalContext, FlagOffReason } from '@nebulr-group/bridge-auth-core';
 import { useFlag } from './use-flag';
+import { openFeatureUpgrade } from '../core/feature-upgrade';
 
 type FlagChild<T> = ReactNode | ((value: T) => ReactNode);
 
@@ -26,10 +27,13 @@ type FlagChild<T> = ReactNode | ((value: T) => ReactNode);
  * `'permission'` (this person's role or privileges), `'off'`, `'rule'`,
  * `'rollout'`, or undefined when Bridge has not said (the flag is not loaded
  * yet). With `'plan'`, `feature` is the plan feature the rule asks for.
+ * `openUpgrade()` opens the upgrade dialog for this feature (TBP-743) — call
+ * it from a click; rendering a fallback never opens anything by itself.
  */
 export interface FeatureFlagOffInfo {
   reason: FlagOffReason | undefined;
   feature: string | undefined;
+  openUpgrade: () => void;
 }
 
 type FallbackChild<T> = ReactNode | ((value: T, off: FeatureFlagOffInfo) => ReactNode);
@@ -48,12 +52,19 @@ export interface FeatureFlagProps<T = boolean> {
    * key collision over Bridge-managed providers.
    */
   context?: Partial<EvalContext>;
+  /**
+   * TBP-743 (port of bridge-svelte TBP-756) — opt in to an inline "Upgrade to
+   * use this" prompt when the feature is off because of the plan and there is
+   * no `fallback`. Clicking it opens the upgrade dialog `<BridgeProvider>`
+   * mounts. Off for any other reason: nothing, as before.
+   */
+  upgrade?: boolean;
   /** Rendered when the rule passed. Node, or a render-prop `(value) => node`. */
   children?: FlagChild<T>;
   /**
    * Rendered when the flag is off / no rule matched. Node, or a render-prop
-   * `(value, { reason, feature }) => node` (TBP-756) — e.g. offer an upgrade
-   * only when `reason === 'plan'`.
+   * `(value, { reason, feature, openUpgrade }) => node` (TBP-756) — e.g. offer
+   * an upgrade only when `reason === 'plan'`.
    */
   fallback?: FallbackChild<T>;
 }
@@ -89,6 +100,12 @@ function renderFallback<T>(child: FallbackChild<T> | undefined, value: T, off: F
  * </FeatureFlag>
  *
  * @example
+ * // the flag's rule: bridge:billing.entitlement.analytics eq true
+ * <FeatureFlag flagKey="analytics" defaultValue={false} upgrade>
+ *   <a href="/analytics">Analytics</a>
+ * </FeatureFlag>
+ *
+ * @example
  * <FeatureFlag
  *   flagKey="reports"
  *   defaultValue={false}
@@ -101,11 +118,27 @@ export function FeatureFlag<T = boolean>({
   flagKey,
   defaultValue,
   context,
+  upgrade = false,
   children,
   fallback,
 }: FeatureFlagProps<T>) {
   const { value, passed, reason, feature } = useFlag<T>(flagKey, defaultValue, context);
-  return <>{passed ? render(children, value) : renderFallback(fallback, value, { reason, feature })}</>;
+  if (passed) return <>{render(children, value)}</>;
+  const openUpgrade = () => openFeatureUpgrade({ flag: flagKey, feature: feature ?? null });
+  if (fallback !== undefined) return <>{renderFallback(fallback, value, { reason, feature, openUpgrade })}</>;
+  if (upgrade && reason === 'plan') {
+    return (
+      <button
+        type="button"
+        className="bridge-btn bridge-btn-secondary bridge-feature-upgrade"
+        data-bridge-feature-upgrade={flagKey}
+        onClick={openUpgrade}
+      >
+        Upgrade to use this
+      </button>
+    );
+  }
+  return null;
 }
 
 export default FeatureFlag;

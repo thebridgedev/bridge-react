@@ -1,54 +1,44 @@
-# bridge React – Library & Demo
+# @nebulr-group/bridge-react
 
-This repository contains the bridge React library and a demo app showing its features.
+Bridge for React: sign-in, plans and limits, feature flags and team management.
 
-## Quick Links
-- [Quickstart Guide](../learning/quickstart/quickstart.md) – Integrate bridge in minutes with React Router
-- [Examples](../learning/examples/examples.md) – Authentication, feature flags, team management, and more
-
-## Table of Contents
-- Installation
-- Configuration
-- Authentication
-- Feature Flags
-- Demo Application
-
-## Installation
+## Install
 
 ```bash
-bun add @nebulr-group/bridge-react
+npm install @nebulr-group/bridge-react @nebulr-group/bridge-auth-core
 ```
 
-## Configuration
+## The whole integration
 
-For the recommended setup and one clear path, see the [Quickstart Guide](../learning/quickstart/quickstart.md).
-
-## Authentication
-
-See:
-- [Quickstart – CallbackHandler setup](../learning/quickstart/quickstart.md#step-3-set-up-the-oauth-callback-route-single-clear-path)
-- [Examples – Route protection and login](../learning/examples/examples.md#route-protection)
-
-## Feature Flags
-
-See:
-- [Examples – Feature Flags](../learning/examples/examples.md#feature-flags)
-
----
-
-## Demo Application
-
-The demo app in this repository includes runnable examples mirroring the documentation. Run it from the monorepo root:
-
-```bash
-bun run dev
+```env
+VITE_BRIDGE_APP_ID=your-app-id
 ```
 
-This starts the demo and consumes the library source directly for a smooth dev experience.
+```tsx
+// main.tsx
+import { BridgeProvider } from '@nebulr-group/bridge-react';
+import '@nebulr-group/bridge-react/styles';
 
----
+<BridgeProvider config={{ loginRoute: '/auth/login' }}>
+  <BrowserRouter><App /></BrowserRouter>
+</BridgeProvider>
+```
 
-## License
+```tsx
+// App.tsx — React Router
+import { BridgeAuthRoutes, BridgeBillingRoutes } from '@nebulr-group/bridge-react/react-router';
 
-MIT License © 2025 Nebulr Group
+<Route path="/auth/*" element={<BridgeAuthRoutes />} />
+<Route path="/subscription/*" element={<BridgeBillingRoutes />} />
+```
 
+TanStack Router: import the same components from `@nebulr-group/bridge-react/tanstack-router` and mount them on `auth/$` and `subscription/$` routes. The routers are optional peer dependencies.
+
+Options you pass win over `VITE_BRIDGE_*` / `REACT_APP_BRIDGE_*`, which win over the defaults. Take over any one page by passing an element (`pages={{ login: <MyLogin /> }}`); restyle everything with the `--bridge-*` CSS tokens.
+
+## Docs
+
+- How it fits together: `learning/mechanisms.md`
+- Everything else: https://thebridge.dev/docs
+
+MIT License © Nebulr Group

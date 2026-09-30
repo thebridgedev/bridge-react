@@ -248,6 +248,8 @@ export function waitForBridge(): Promise<void> {
 
 // ── Subscription ──────────────────────────────────────────────────────────────
 
+let _subscriptionLoadedAt = 0;
+
 export async function loadSubscription(): Promise<void> {
   useBridgeStore.setState((s) => ({
     subscription: { ...s.subscription, loading: true, error: null },
@@ -260,12 +262,25 @@ export async function loadSubscription(): Promise<void> {
     useBridgeStore.setState({
       subscription: { status, plans, loading: false, error: null },
     });
+    _subscriptionLoadedAt = Date.now();
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to load subscription';
     useBridgeStore.setState((s) => ({
       subscription: { ...s.subscription, loading: false, error: msg },
     }));
   }
+}
+
+/**
+ * Read the subscription unless the store holds a read younger than `maxAgeMs`
+ * (default 30 s) — what the subscription pages call on mount, so moving
+ * between them does not re-read every time (mirrors bridge-svelte TBP-762).
+ */
+export function ensureSubscription(maxAgeMs = 30_000): Promise<void> {
+  const { status, plans, loading } = useBridgeStore.getState().subscription;
+  if (loading) return Promise.resolve();
+  if (status && plans && Date.now() - _subscriptionLoadedAt < maxAgeMs) return Promise.resolve();
+  return loadSubscription();
 }
 
 // ── Stripe checkout return (TBP-723) ──────────────────────────────────────────
@@ -334,6 +349,7 @@ export function _resetBridgeInstance(): void {
   _resolvedConfig = null;
   _appConfigPromise = null;
   _checkoutConfirmation = null;
+  _subscriptionLoadedAt = 0;
   _resolveReady = null;
   useBridgeStore.setState({
     tokens: null,

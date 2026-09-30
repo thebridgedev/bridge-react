@@ -13,6 +13,8 @@ Dual-mode component:
 | `onError` | `(error: Error) => void` | (none) | Called on error |
 | `loginHref` | `string` | `'/auth/login'` | Link back to the login page |
 
+> **You may not need this page.** `<BridgeAuthRoutes>` mounted at `/auth/*` already serves `/auth/forgot-password` and `/auth/set-password/<token>` (where signup verification and password-reset emails land). Write your own only to take that page over, and hand it to Bridge by element: `<BridgeAuthRoutes pages={{ 'forgot-password': <ForgotPasswordPage /> }} />`. For the set-password page, pass a function to receive the emailed token: `pages={{ 'set-password': ({ token }) => <ForgotPassword token={token} /> }}`.
+
 **Request page:**
 
 ```tsx

@@ -18,11 +18,12 @@ import { BridgeBillingNotice } from '@nebulr-group/bridge-react';
 | `actionHref` | `string` | — | CTA destination for this instance (see routing note below) |
 
 The CTA navigates to, in priority order: `onActionClick` → `actionHref` prop →
-the `billing.manageRoute` config value → `/billing`. If your plan page lives
-elsewhere (e.g. `/subscription`), set it once in config:
+the `billing.manageRoute` config value → `/subscription` (the page
+`<BridgeBillingRoutes>` serves). If your plan page lives elsewhere (e.g.
+`/plans`), set it once in config:
 
 ```tsx
-<BridgeProvider config={{ appId: '...', billing: { manageRoute: '/subscription' } }}>
+<BridgeProvider config={{ billing: { manageRoute: '/plans' } }}>
 ```
 
 "Billing-locked" means the subscription of the workspace (called a *tenant* in the API) has lapsed, so the app should be gated; it's the `gateEngaged` flag on the subscription snapshot. See [How billing works](/billing/how-it-works/#when-billing-locks-the-app) for how the lock relates to the plan-selection gate.

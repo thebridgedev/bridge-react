@@ -233,7 +233,7 @@ describe('TBP-723: Stripe checkout return vs the paywall redirect', () => {
     await until(() => navigations().length > 0);
     await sleep(30);
 
-    expect(navigations()).toEqual(['/payment-error']);
+    expect(navigations()).toEqual(['/subscription/error']) // TBP-743: the default paymentErrorRoute;
   });
 
   it('outside the callback route the paywall still redirects on mount, as before', async () => {

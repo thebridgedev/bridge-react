@@ -1,4 +1,4 @@
-import type { HTMLAttributes } from 'react';
+import type { HTMLAttributes, ReactNode } from 'react';
 import { useState } from 'react';
 import type { MessageOverrides } from '@nebulr-group/bridge-auth-core';
 import { getBridgeAuth } from '../../core/bridge-instance';
@@ -16,6 +16,12 @@ interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'onError'> {
   loginHref?: string;
   /** Heading text. Pass `null`/`''` to render no heading and use your own page title. */
   heading?: string | null;
+  /**
+   * The heading as a node, replacing the built-in one on the main step only
+   * (the form). Result states keep their own heading, so two never stack.
+   * `<BridgeAuthRoutes heading>` passes its per-page heading here (TBP-743).
+   */
+  headingSlot?: ReactNode;
   /** Step description. Pass `null`/`''` to render nothing and use your own subtitle (TBP-631). */
   description?: string | null;
   /** Per-key copy overrides for this component only (TBP-630). */
@@ -28,6 +34,7 @@ export function ForgotPassword({
   onError,
   loginHref = '/auth/login',
   heading,
+  headingSlot,
   description,
   messages,
   className,
@@ -107,6 +114,7 @@ export function ForgotPassword({
   return (
     <AuthFormWrapper
       heading={wrapperHeading}
+      headingSlot={passwordReset || emailSent ? undefined : headingSlot}
       description={wrapperDescription}
       className={className}
       style={style}

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks/use-auth';
-import { confirmCheckout, getBridgeAuth, getBridgeConfig, loadSubscription } from '../../core/bridge-instance';
+import { confirmCheckout, getBridgeAuth, loadSubscription } from '../../core/bridge-instance';
+import { appUsesBilling, billingRoutes } from '../../core/billing-routes';
 import { getRouterAdapter } from '../../utils/router-adapter';
 import { sanitizeReturnTo, takeReturnTo } from '@nebulr-group/bridge-auth-core';
 
@@ -9,7 +10,8 @@ export interface CallbackHandlerProps {
   successRoute?: string;
   /** Route to redirect to when the callback fails. @default '/login' */
   loginRoute?: string;
-  /** Route to redirect to when a Stripe checkout confirmation fails. @default '/payment-error' */
+  /** Route to redirect to when a Stripe checkout confirmation fails.
+   *  @default `billing.paymentErrorRoute` — '/subscription/error' */
   paymentErrorRoute?: string;
 }
 
@@ -27,8 +29,9 @@ export interface CallbackHandlerProps {
 export function CallbackHandler({
   successRoute = '/',
   loginRoute = '/login',
-  paymentErrorRoute = '/payment-error',
+  paymentErrorRoute: paymentErrorRouteProp,
 }: CallbackHandlerProps = {}) {
+  const paymentErrorRoute = paymentErrorRouteProp ?? billingRoutes().paymentErrorRoute;
   const { handleCallback } = useAuth();
   const didRun = useRef(false);
 
@@ -49,7 +52,7 @@ export function CallbackHandler({
     // auth-core's `sanitizeReturnTo` admits only a same-origin path; anything
     // else falls back to the default, like a missing value does.
     // Stripe may append its own ?session_id to the redirect destination — strip it.
-    const stripeRedirectTo = (sanitizeReturnTo(params.get('redirect')) ?? '/subscription').split('?')[0];
+    const stripeRedirectTo = (sanitizeReturnTo(params.get('redirect')) ?? billingRoutes().manageRoute).split('?')[0];
 
     const router = getRouterAdapter();
 
@@ -79,12 +82,17 @@ export function CallbackHandler({
     // tenant that still has to pick a plan (e.g. a cancelled checkout) goes to
     // the paywall, as the next page's bootstrap check would have sent it.
     const redirectAfterCheckout = async (destination: string) => {
-      const paywallRoute = getBridgeConfig()?.billing?.paywallRoute;
+      const routes = billingRoutes();
+      const paywallRoute = routes.paywallRoute;
       if (paywallRoute && destination !== paywallRoute) {
-        const should = await getBridgeAuth()
+        const bridge = getBridgeAuth();
+        const should = await bridge
           .shouldRedirectToPaywall()
           .catch(() => false); // fail open, like the provider's check
-        if (should) return redirect(paywallRoute);
+        // The default paywall applies only to an app that has plans.
+        const applies =
+          should && (!routes.paywallIsDefault || appUsesBilling(await bridge.getPlans().catch(() => null)));
+        if (applies) return redirect(paywallRoute);
       }
       return redirect(destination);
     };

@@ -21,7 +21,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 
 createRoot(document.getElementById('root')!).render(
-  <BridgeProvider appId={import.meta.env.VITE_BRIDGE_APP_ID}>
+  <BridgeProvider config={{ loginRoute: '/auth/login' }}>
     <BrowserRouter>
       <App />
     </BrowserRouter>
@@ -35,13 +35,15 @@ createRoot(document.getElementById('root')!).render(
 ```tsx
 // src/App.tsx
 import { ProtectedRoute } from '@nebulr-group/bridge-react';
+import { BridgeAuthRoutes } from '@nebulr-group/bridge-react/react-router';
 import { Route, Routes } from 'react-router-dom';
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
-      <Route path="/auth/login" element={<LoginPage />} />
+      {/* every sign-in page, public */}
+      <Route path="/auth/*" element={<BridgeAuthRoutes />} />
       <Route
         path="/dashboard"
         element={(
@@ -62,7 +64,7 @@ function App() {
 
 | Piece | What it does |
 |--------|--------------|
-| `<ProtectedRoute>` | While auth state is loading it renders a loading placeholder. Once resolved, an unauthenticated user is sent to Bridge's hosted login page; an authenticated user sees the route's content. |
+| `<ProtectedRoute>` | While auth state is loading it renders a loading placeholder. Once resolved, an unauthenticated user is sent to your `loginRoute` (or Bridge's hosted login page when it is unset); an authenticated user sees the route's content. |
 | Public routes | Any route you don't wrap in `<ProtectedRoute>` is public. |
 | Router adapter | Bridge-driven redirects (the OAuth callback, the billing paywall) navigate through a `RouterAdapter`, so they use your router's client-side navigation instead of a full reload. |
 
@@ -146,33 +148,22 @@ A path that fails validation is treated the same way: your login page gets
 
 ## Wiring up a router adapter
 
-Register a router adapter once in your root component so Bridge redirects can use client-side navigation. Without one, Bridge falls back to `window.location`, which still works but forces a full reload.
+Bridge-driven redirects (the route guard, the OAuth callback, the billing paywall) use your router's client-side navigation once Bridge knows your router. Without that, Bridge falls back to `window.location`, which still works but forces a full reload.
+
+The router adapter entries do it for you: `<BridgeAuthRoutes>` and `<BridgeBillingRoutes>` from `@nebulr-group/bridge-react/react-router` or `@nebulr-group/bridge-react/tanstack-router` register the router while mounted. An app that renders neither calls `useBridgeRouter()` from the same entry once, inside the router:
 
 ```tsx
-import { createReactRouterAdapter, setRouterAdapter } from '@nebulr-group/bridge-react';
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useBridgeRouter } from '@nebulr-group/bridge-react/react-router';
 
 function App() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    setRouterAdapter(createReactRouterAdapter(navigate));
-  }, [navigate]);
-
+  useBridgeRouter();
   return <Routes>{/* ... */}</Routes>;
 }
 ```
 
-Pre-built adapters ship for the three most common routers; pick the one matching your app:
+The router packages are optional peers (`react-router` 6.4 to 7, `@tanstack/react-router` 1): only the entry you import needs its router installed.
 
-| Adapter | Router |
-|---------|--------|
-| `createReactRouterAdapter(navigate)` | React Router v6 (`useNavigate()`) |
-| `createTanStackRouterAdapter(router)` | TanStack Router (`useRouter()`) |
-| `createWouterAdapter(navigate)` | Wouter |
-
-You can also implement `RouterAdapter` yourself (`navigate`, `replace`, `getCurrentPath`) for any other router, and call `setRouterAdapter()` with it.
+For any other router, the main entry still ships `createReactRouterAdapter`, `createTanStackRouterAdapter` and `createWouterAdapter`, or implement `RouterAdapter` yourself (`navigate`, `replace`, `getCurrentPath`), and call `setRouterAdapter()` with it.
 
 ## Gating a route behind a feature flag
 
@@ -193,4 +184,4 @@ Wrap the flag-gated route in this component the same way you'd wrap it in `<Prot
 
 ## Billing gates
 
-Set `billing.paywallRoute` in the [config reference](/auth/config/#all-config-options) and `<BridgeProvider>` redirects an authenticated workspace that hasn't selected a plan there on load. Keep the paywall route itself public (outside `<ProtectedRoute>`'s hosted-login bounce) so the redirect target is reachable.
+`<BridgeProvider>` redirects an authenticated workspace that hasn't selected a plan to the paywall on load: `/subscription/plan` by default, served by `<BridgeBillingRoutes>` mounted at `/subscription/*` — only when the app has plans. Set `billing.paywallRoute` in the [config reference](/auth/config/#all-config-options) to move it (e.g. `/welcome` rendering `<BridgePaywallPage />`), or `false` to turn it off. A paywall route of your own must stay reachable for a signed-in, plan-less user.

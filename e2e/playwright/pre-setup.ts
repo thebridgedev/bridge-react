@@ -74,7 +74,7 @@ async function preSetup() {
   const envContent = [
     '# E2E test env for the LOCAL backend — written by e2e/playwright/pre-setup.ts.',
     '# VITE_BRIDGE_APP_ID stays empty: global-setup seeds a per-worker app id into',
-    '# localStorage (`bridge:appId`), and a value here would override it.',
+    '# localStorage (`bridge:appId`), which the demo passes explicitly (it wins).',
     'VITE_BRIDGE_APP_ID=',
     `VITE_BRIDGE_API_BASE_URL=${apiBaseUrl}`,
     `VITE_BRIDGE_HOSTED_URL=${process.env.LOCAL_HOSTED_URL || 'http://localhost:3091'}`,

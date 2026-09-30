@@ -37,77 +37,54 @@ function PlanSummary() {
 }
 ```
 
-## Configure your billing routes
+## Mount the subscription pages
 
-Add a `billing` block to the `BridgeConfig` you already pass to `<BridgeProvider>`:
+One route serves the subscription page, the paywall and both pages a Stripe checkout returns to. With React Router:
 
 ```tsx
-// src/main.tsx
-import { BridgeProvider, type BridgeConfig } from '@nebulr-group/bridge-react';
-import { createRoot } from 'react-dom/client';
-import App from './App';
+// src/App.tsx
+import { BridgeBillingRoutes } from '@nebulr-group/bridge-react/react-router';
 
-const config: BridgeConfig = {
-  appId: import.meta.env.VITE_BRIDGE_APP_ID,
-  loginRoute: '/auth/login',
-  billing: {
-    paywallRoute: '/subscription',       // send plan-less workspaces here
-    paymentErrorRoute: '/payment-error', // land here if a checkout confirmation fails
-  },
-};
-
-createRoot(document.getElementById('root')!).render(
-  <BridgeProvider config={config}>
-    <App />
-  </BridgeProvider>
-);
+<Routes>
+  {/* …your routes */}
+  <Route path="/subscription/*" element={<BridgeBillingRoutes />} />
+</Routes>
 ```
 
-- **`paywallRoute`**: when set, the provider redirects an authenticated workspace
-  that hasn't selected a plan here **as soon as it mounts**. Point it at
-  wherever your `<PlanSelector>` lives. (Workspaces that opt out via
-  `paymentsAutoRedirect: false` are exempt.)
-- **`paymentErrorRoute`**: where Bridge sends the user if a Stripe checkout
-  confirmation fails on the return trip. Defaults to `/payment-error`.
+With TanStack Router, import it from `@nebulr-group/bridge-react/tanstack-router` and mount it on a `subscription/$` route; without a router, render `<BridgeBillingRoutes base="/subscription" />` from the main entry.
 
-Both are optional. Leave `paywallRoute` unset if you'd rather gate the app with
-`<BridgePaywall>` (below) than redirect.
+| Address | Page |
+|---------|------|
+| `/subscription` | The current plan, "Manage billing" and the plan picker |
+| `/subscription/plan` | The paywall: where a workspace with no plan is sent |
+| `/subscription/success` | Where a completed checkout (or a free pick) lands |
+| `/subscription/error` | Where a failed checkout confirmation lands |
+
+Those addresses are the defaults of the `billing` settings on `<BridgeProvider config>`, so nothing Bridge redirects to is a 404:
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `billing.manageRoute` | `'/subscription'` | Where Upgrade/Manage buttons and the upgrade dialog link |
+| `billing.paywallRoute` | `'/subscription/plan'` | Where a signed-in workspace with no plan is redirected **as soon as the provider mounts**. The default applies only when the app has plans; `false` turns the redirect off. Workspaces that opt out via `paymentsAutoRedirect: false` are exempt |
+| `billing.paymentErrorRoute` | `'/subscription/error'` | Where Bridge sends the user if a Stripe checkout confirmation fails on the return trip |
+
+Set one only to move it, e.g. `billing: { paywallRoute: '/welcome' }` for an onboarding page of your own (see [Require a plan](/billing/onboarding/require-plan/)). To restyle or take over a page, pass `frame`, `heading` or `pages={{ plan: <MyPricing /> }}` — the same props as the sign-in pages.
 
 ## Adding billing to your UI
 
 Here are three use cases for billing in your UI:
 
-**1. Letting users select a plan after first signup**: wrap your root layout in
-`<BridgePaywall>`; it blocks the app and shows a plan picker until the workspace
-has an active plan, so a brand-new user picks a plan before they get in:
-
-```tsx
-// src/App.tsx
-import { BridgePaywall } from '@nebulr-group/bridge-react';
-import { Routes } from './Routes';
-
-export default function App() {
-  return (
-    <BridgePaywall successRedirect="/welcome" cancelRedirect="/subscription">
-      <Routes />
-    </BridgePaywall>
-  );
-}
-```
+**1. Letting users select a plan after first signup**: nothing to write. A
+brand-new workspace with no plan is sent to `/subscription/plan` before it gets
+in. To gate in place with a modal instead, wrap your app in `<BridgePaywall>` and
+set `billing: { paywallRoute: false }`.
 
 → [Require a plan to use the app](/billing/onboarding/require-plan/)
 
-**2. A self-service subscription page**: drop `<PlanSelector />` onto a route. It
-loads all the plans so your users can upgrade or downgrade directly from your app:
-
-```tsx
-// src/pages/SubscriptionPage.tsx
-import { PlanSelector } from '@nebulr-group/bridge-react';
-
-export default function SubscriptionPage() {
-  return <PlanSelector successRedirect="/subscription/success" cancelRedirect="/subscription" />;
-}
-```
+**2. A self-service subscription page**: `/subscription`, served above. It
+shows the current plan and all the plans, so your users can upgrade or downgrade
+directly from your app. `<PlanSelector />` is the picker it is built from, for a
+page of your own.
 
 → [Choose & switch plans](/billing/onboarding/choose-switch-plans/)
 

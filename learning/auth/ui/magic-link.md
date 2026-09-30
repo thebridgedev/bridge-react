@@ -12,6 +12,8 @@ Standalone magic link request form. It also redeems the link: the emailed link r
 
 **Usage:**
 
+> **You may not need this page.** `<BridgeAuthRoutes>` mounted at `/auth/*` already serves `/auth/magic-link`, and takes the user on once the link signs them in. Write your own only to take that page over, and hand it to Bridge by element: `<BridgeAuthRoutes pages={{ 'magic-link': <MagicLinkPage /> }} />`.
+
 ```tsx
 // src/pages/MagicLinkPage.tsx (rendered at /auth/magic-link)
 import { MagicLink } from '@nebulr-group/bridge-react';

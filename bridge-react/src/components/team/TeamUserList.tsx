@@ -1,7 +1,8 @@
 import type { TeamUser } from '@nebulr-group/bridge-auth-core';
 import type { HTMLAttributes } from 'react';
 import { useEffect, useState } from 'react';
-import { getBridgeAuth, getBridgeConfig } from '../../core/bridge-instance';
+import { getBridgeAuth } from '../../core/bridge-instance';
+import { billingRoutes } from '../../core/billing-routes';
 import { Alert } from '../sdk-auth/shared/Alert';
 import { Spinner } from '../sdk-auth/shared/Spinner';
 import { TeamAddUserDialog } from './TeamAddUserDialog';
@@ -121,7 +122,7 @@ export function TeamUserList({ onError, seatsMetric, className, style, ...rest }
           <p className="bridge-team-seats-full" data-bridge-seats-full={seatsMetric}>
             All {seatsQuota.limit.toLocaleString()} seats on your plan are taken
             {seatsQuota.source === 'membership' ? ' (pending invites count)' : ''}.{' '}
-            <a href={getBridgeConfig()?.billing?.manageRoute ?? '/billing'}>Upgrade</a> to invite more
+            <a href={billingRoutes().manageRoute}>Upgrade</a> to invite more
             people.
           </p>
         )}

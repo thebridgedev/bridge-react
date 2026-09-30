@@ -1,43 +1,27 @@
-import { CallbackHandler, ProtectedRoute, setRouterAdapter } from '@nebulr-group/bridge-react';
-import { useEffect } from 'react';
-import { Route, Routes, useNavigate } from 'react-router-dom';
+import { BridgePaywallPage, ProtectedRoute } from '@nebulr-group/bridge-react';
+import { BridgeAuthRoutes, BridgeBillingRoutes, useBridgeRouter } from '@nebulr-group/bridge-react/react-router';
+import { Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import DashboardPage from './pages/DashboardPage';
 import FeatureFlagsPage from './pages/FeatureFlagsPage';
 import FlagContextDemoPage from './pages/FlagContextDemoPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
-import SdkLoginPage from './pages/SdkLoginPage';
-import SdkSignupPage from './pages/SdkSignupPage';
-import SdkMagicLinkPage from './pages/SdkMagicLinkPage';
-import SdkForgotPasswordPage from './pages/SdkForgotPasswordPage';
-import SdkSetPasswordPage from './pages/SdkSetPasswordPage';
-import SdkSetupPasskeyPage from './pages/SdkSetupPasskeyPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ApiTokensPage from './pages/ApiTokensPage';
 import ProfilePage from './pages/ProfilePage';
-import SubscriptionPage from './pages/SubscriptionPage';
-import SubscriptionCancelPage from './pages/SubscriptionCancelPage';
 import SubscriptionRelativePage from './pages/SubscriptionRelativePage';
-import SubscriptionSuccessPage from './pages/SubscriptionSuccessPage';
 import TeamPage from './pages/TeamPage';
 import TeamPanelPage from './pages/TeamPanelPage';
 import WorkspacesPage from './pages/WorkspacesPage';
 import TokenStatusPage from './pages/TokenStatusPage';
-import WelcomePage from './pages/WelcomePage';
-import PaymentErrorPage from './pages/PaymentErrorPage';
 import ProtectedPage from './pages/ProtectedPage';
 
 function App() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    setRouterAdapter({
-      navigate: (path, options) => navigate(path, { replace: options?.replace }),
-      replace: (path) => navigate(path, { replace: true }),
-      getCurrentPath: () => window.location.pathname
-    });
-  }, [navigate]);
+  // Bridge's own navigation (the route guard, the paywall) goes through React
+  // Router. <BridgeAuthRoutes>/<BridgeBillingRoutes> also register it; this
+  // covers pages that render neither.
+  useBridgeRouter();
 
   return (
     <Layout>
@@ -45,21 +29,15 @@ function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/flag-context-demo" element={<FlagContextDemoPage />} />
-        <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
 
-        {/* SDK Auth — in-app auth flows (public, not behind ProtectedRoute) */}
-        <Route path="/auth/login" element={<SdkLoginPage />} />
-        <Route path="/auth/signup" element={<SdkSignupPage />} />
-        <Route path="/auth/magic-link" element={<SdkMagicLinkPage />} />
-        <Route path="/auth/forgot-password" element={<SdkForgotPasswordPage />} />
-        <Route path="/auth/set-password/:token" element={<SdkSetPasswordPage />} />
-        <Route path="/auth/setup-passkey/:token" element={<SdkSetupPasskeyPage />} />
+        {/* TBP-743 — every sign-in page (login, signup, the OAuth callback,
+            set-password, forgot-password, magic-link, setup-passkey,
+            workspaces) from one route. Public: not behind ProtectedRoute. */}
+        <Route path="/auth/*" element={<BridgeAuthRoutes />} />
 
-        {/* Billing paywall routes — PUBLIC (outside ProtectedRoute) so the
-            paywall redirect target and the Stripe-confirm-failure landing are
-            reachable without bouncing in a redirect loop. */}
-        <Route path="/welcome" element={<WelcomePage />} />
-        <Route path="/payment-error" element={<PaymentErrorPage />} />
+        {/* The demo's own onboarding paywall (billing.paywallRoute: '/welcome').
+            PUBLIC so a plan-less user can land and pick a plan. */}
+        <Route path="/welcome" element={<BridgePaywallPage heading="Welcome — let's pick your plan" />} />
 
         {/* Wrap all protected routes under one ProtectedRoute */}
         <Route
@@ -74,9 +52,9 @@ function App() {
                 <Route path="/team" element={<TeamPage />} />
                 <Route path="/team-panel" element={<TeamPanelPage />} />
                 <Route path="/workspaces" element={<WorkspacesPage />} />
-                <Route path="/subscription" element={<SubscriptionPage />} />
-                <Route path="/subscription/success" element={<SubscriptionSuccessPage />} />
-                <Route path="/subscription/cancel" element={<SubscriptionCancelPage />} />
+                {/* TBP-743 — the subscription page, /subscription/plan,
+                    /subscription/success and /subscription/error. */}
+                <Route path="/subscription/*" element={<BridgeBillingRoutes />} />
                 <Route path="/subscription-relative" element={<SubscriptionRelativePage />} />
                 <Route path="/api-tokens" element={<ApiTokensPage />} />
                 <Route path="/token-status" element={<TokenStatusPage />} />

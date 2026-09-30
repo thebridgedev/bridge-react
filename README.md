@@ -27,57 +27,51 @@ npm install @nebulr-group/bridge-react
 
 ## Configuration
 
-Wrap your application with the `BridgeProvider`. Configuration can be supplied via props or environment variables.
+The whole integration, with React Router. Every page Bridge needs, it serves.
+
+```env
+# .env — a production app needs only the first line
+VITE_BRIDGE_APP_ID=your-app-id
+VITE_BRIDGE_API_BASE_URL=https://api-stage.thebridge.dev   # stage / local only
+```
 
 ```tsx
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+// main.tsx
 import { BridgeProvider } from '@nebulr-group/bridge-react';
-import App from './App';
+import '@nebulr-group/bridge-react/styles';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <BridgeProvider
-    config={{
-      appId: 'your_app_id',
-      callbackUrl: 'http://localhost:5173/auth/oauth-callback',
-      defaultRedirectRoute: '/protected',
-      debug: true
-    }}
-  >
-    <App />
+createRoot(document.getElementById('root')!).render(
+  <BridgeProvider config={{ loginRoute: '/auth/login' }}>
+    <BrowserRouter><App /></BrowserRouter>
   </BridgeProvider>
 );
 ```
 
-You can also configure through environment variables (recommended):
+```tsx
+// App.tsx
+import { BridgeAuthRoutes, BridgeBillingRoutes } from '@nebulr-group/bridge-react/react-router';
 
-```env
-# Vite
-VITE_BRIDGE_APP_ID=your-app-id
-VITE_BRIDGE_CALLBACK_URL=http://localhost:5173/auth/oauth-callback
-VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE=/protected
-VITE_BRIDGE_DEBUG=true
-
-# Create React App
-REACT_APP_BRIDGE_APP_ID=your-app-id
-REACT_APP_BRIDGE_CALLBACK_URL=http://localhost:3000/auth/oauth-callback
-REACT_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE=/protected
-REACT_APP_BRIDGE_DEBUG=true
+<Routes>
+  <Route path="/auth/*" element={<BridgeAuthRoutes />} />                {/* every sign-in page */}
+  <Route path="/subscription/*" element={<BridgeBillingRoutes />} />     {/* plans, paywall, checkout returns */}
+  …your routes…
+</Routes>
 ```
 
-The provider reads exactly these keys: `APP_ID`, `API_BASE_URL`, `CALLBACK_URL`, `DEFAULT_REDIRECT_ROUTE`, `LOGIN_ROUTE` and `DEBUG`, each with the `VITE_BRIDGE_` or `REACT_APP_BRIDGE_` prefix. `authBaseUrl`, `teamManagementUrl` and `cloudViewsUrl` have no environment variable; set them on the `config` prop.
+TanStack Router: `createRoute({ getParentRoute: () => rootRoute, path: 'auth/$', component: BridgeAuthRoutes })` with the components from `@nebulr-group/bridge-react/tanstack-router`. Both routers are optional peer dependencies; install only the one you use. Without a router, `<BridgeAuthRoutes base="/auth" />` reads `window.location`.
 
-### Essential Configuration
-- **appId** (required string): Your application ID from the Bridge dashboard.
-- **callbackUrl** (string): URL Bridge redirects to after authentication. Default: `origin + '/auth/oauth-callback'`.
-- **defaultRedirectRoute** (string): Route to redirect users after successful login. Default: `'/'`.
-- **debug** (boolean): Enable verbose SDK logs. Default: `false`.
+**Settings resolve as explicit option > environment > default.** An empty variable counts as unset.
 
-### Advanced Configuration
-- **authBaseUrl** (string): Bridge auth service base URL. Default: `https://api.thebridge.dev/auth`.
-- **loginRoute** (string): App login route used for unauthenticated redirects. Default: `'/login'`.
-- **teamManagementUrl** (string): Team management portal URL. Default: `https://api.thebridge.dev/cloud-views/user-management-portal/users`.
-- **cloudViewsUrl** (string): Base URL for Bridge cloud-views (feature flags, plan selection, payments). Default: `https://api.thebridge.dev/cloud-views`.
+| Vite | Create React App | When to set it |
+|---|---|---|
+| `VITE_BRIDGE_APP_ID` | `REACT_APP_BRIDGE_APP_ID` | Always. Missing, Bridge refuses to start and names the variable |
+| `VITE_BRIDGE_API_BASE_URL` | `REACT_APP_BRIDGE_API_BASE_URL` | Only for a non-production app. Unset means production |
+| `VITE_BRIDGE_HOSTED_URL` | `REACT_APP_BRIDGE_HOSTED_URL` | Only for a local or self-hosted Bridge; on Bridge's domains it follows the API address |
+| `VITE_BRIDGE_DEBUG` | `REACT_APP_BRIDGE_DEBUG` | `true` for console logging |
+
+`callbackUrl`, `defaultRedirectRoute` and `loginRoute` can also come from `…_BRIDGE_CALLBACK_URL`, `…_BRIDGE_DEFAULT_REDIRECT_ROUTE` and `…_BRIDGE_LOGIN_ROUTE`. Everything else (`billing`, `locale`, `messages`, `returnTo`, `devBadge`) is set on the `config` prop.
+
+Customising Bridge's pages, lowest rung first: `--bridge-*` CSS tokens; `frame(page, children)` and `heading(page)` render props; taking over one page by passing an element (`<BridgeAuthRoutes pages={{ login: <MyLogin /> }} />`); or headless on `getBridgeAuth()`. Plan limits need no page code: a `402 QUOTA_EXCEEDED` from your backend opens the upgrade dialog `<BridgeProvider>` mounts; `<QuotaGate metric>` and `useQuota(metric)` are the next two levels. The rules are on one page: [learning/mechanisms.md](learning/mechanisms.md).
 
 ## Authentication
 

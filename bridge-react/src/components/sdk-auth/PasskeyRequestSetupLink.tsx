@@ -67,7 +67,8 @@ export function PasskeyRequestSetupLink({
     setError(null);
     setLoading(true);
     try {
-      await (getBridgeAuth() as any).sendPasskeySetupLink(email);
+      // auth-core's name for it; `sendPasskeySetupLink` never existed (TBP-743).
+      await getBridgeAuth().requestPasskeySetupLink(email);
       setSent(true);
       onSent?.();
     } catch (err: any) {

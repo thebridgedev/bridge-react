@@ -8,10 +8,10 @@ This is the only decision that shapes the rest of the integration, and getting i
 
 | You want | Use | What you build |
 |---|---|---|
-| The fastest path; Bridge owns the login UI | **Hosted auth** (default) | Nothing. No login page, no signup page, no forms |
-| Login inside your own app, your own styling | **SDK auth** | `<LoginForm>`, `<SignupForm>` etc. from this package, on your own routes |
+| The fastest path; Bridge owns the login UI | **Hosted auth** (default) | Nothing beyond the one `/auth/*` route below |
+| Login inside your own app, your own styling | **SDK auth** | The same one `/auth/*` route, plus `loginRoute: '/auth/login'` in the config |
 
-**Hosted is the default and needs no `loginRoute`.** Adding `loginRoute` to the config is what switches the SDK into in-app mode — that single field is the whole switch, which is easy to set by accident and then wonder why you are being redirected to a route you never built.
+**Hosted is the default and needs no `loginRoute`.** Adding `loginRoute: '/auth/login'` is the whole switch to in-app mode. Either way `<BridgeAuthRoutes>` serves every sign-in page (login, signup, the OAuth callback, set-password, forgot-password, magic-link, setup-passkey, workspaces) from one route: **never hand-write those pages.**
 
 If the user has not said, ask. Do not guess: a wrong guess here is the most expensive rework in this guide.
 
@@ -28,19 +28,18 @@ If the user has not said, ask. Do not guess: a wrong guess here is the most expe
 npm i @nebulr-group/bridge-react
 ```
 
-## Step 2 — Configure the environment
+React Router (6.4+ or 7) or TanStack Router is an optional peer: install nothing extra if the app already has one.
 
-Keep environment-specific values out of source:
+## Step 2 — Configure the environment
 
 ```env
 # .env
 VITE_BRIDGE_APP_ID=your-app-id-here
-VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
 ```
 
-`<BridgeProvider>` reads `VITE_BRIDGE_*` (Vite) and `REACT_APP_BRIDGE_*` (Create React App) automatically, and **env vars take priority over props**. Worth knowing when a config value you passed appears to be ignored.
+`<BridgeProvider>` reads `VITE_BRIDGE_*` (Vite) and `REACT_APP_BRIDGE_*` (Create React App) itself. Each field resolves as **explicit option > environment > default**, so do not copy variables into a config object by hand. With no app id anywhere, the provider refuses to start and logs which variable to set.
 
-**For a non-production app, set `VITE_BRIDGE_API_BASE_URL` too.** It defaults to production, and the failure is silent: a stage or local app ID pointed at the production API does not exist there, so signup comes back `Not Found` with nothing in the console naming the real cause. Unlike the other Bridge SDKs, bridge-react takes this one from the environment rather than a `BridgeConfig` field — `apiBaseUrl` is not on the type.
+**For a non-production app, set `VITE_BRIDGE_API_BASE_URL` too** (e.g. `https://api-stage.thebridge.dev`). Unset means production, and a stage or local app id against the production API does not exist there; in a development build the provider says so once in the console. The hosted login address follows the API address on Bridge's own domains, so `VITE_BRIDGE_HOSTED_URL` is only for a local or self-hosted Bridge.
 
 ## Step 3 — Mount the provider
 
@@ -51,16 +50,14 @@ VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { BridgeProvider, type BridgeConfig } from '@nebulr-group/bridge-react';
+import { BridgeProvider } from '@nebulr-group/bridge-react';
+import '@nebulr-group/bridge-react/styles';
 import App from './App';
-
-const config: BridgeConfig = {
-  appId: import.meta.env.VITE_BRIDGE_APP_ID,
-};
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BridgeProvider config={config}>
+    {/* SDK auth: config={{ loginRoute: '/auth/login' }}. Hosted auth: no props. */}
+    <BridgeProvider>
       <BrowserRouter>
         <App />
       </BrowserRouter>
@@ -69,67 +66,44 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-Common `BridgeConfig` fields:
+Common `BridgeConfig` fields (all optional when the environment is set):
 
 | Field | Default | Description |
 |---|---|---|
-| `appId` | **required** | Your Bridge app ID |
-| `callbackUrl` | `<origin>/auth/oauth-callback` | Where hosted login redirects back to |
-| `defaultRedirectRoute` | `'/'` | Where to land after login |
+| `appId` | `VITE_BRIDGE_APP_ID` | Your Bridge app ID |
+| `apiBaseUrl` | `VITE_BRIDGE_API_BASE_URL`, else production | Only for stage / local / self-hosted |
 | `loginRoute` | — | **Setting this switches to SDK (in-app) auth** |
+| `defaultRedirectRoute` | `'/'` | Where to land after login |
+| `billing` | see `billing-prompt.md` | Subscription pages, paywall, upgrade dialog |
 | `debug` | `false` | Debug logging |
 
-## Step 4 — Register a router adapter
-
-Bridge navigates on your behalf (after login, on a guard redirect). It needs to know how:
-
-```tsx
-useEffect(() => {
-  setRouterAdapter({
-    navigate: (path, options) => navigate(path, { replace: options?.replace }),
-    replace: (path) => navigate(path, { replace: true }),
-    getCurrentPath: () => window.location.pathname,
-  });
-}, [navigate]);
-```
-
-Prebuilt factories ship for the common routers: `createReactRouterAdapter`, `createTanStackRouterAdapter`, `createWouterAdapter`. Prefer one of those over hand-rolling the object.
-
-**Skipping this is the most common integration bug.** Auth appears to work, then a post-login redirect does a full page reload or lands nowhere.
-
-## Step 5 — Add the callback route and protect routes
+## Step 4 — Mount Bridge's routes and protect yours
 
 ```tsx
 // src/App.tsx
-import { CallbackHandler, ProtectedRoute, setRouterAdapter } from '@nebulr-group/bridge-react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { ProtectedRoute } from '@nebulr-group/bridge-react';
+import { BridgeAuthRoutes } from '@nebulr-group/bridge-react/react-router';
+import { Routes, Route } from 'react-router-dom';
 
 function App() {
-  const navigate = useNavigate();
-  useEffect(() => { /* setRouterAdapter as above */ }, [navigate]);
-
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
-      {/* Must exist, or the redirect back from login 404s */}
-      <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
-
-      <Route
-        path="/*"
-        element={
-          <ProtectedRoute>
-            <Routes>
-              <Route path="/dashboard" element={<DashboardPage />} />
-            </Routes>
-          </ProtectedRoute>
-        }
-      />
+      {/* every sign-in page, including the OAuth callback — public */}
+      <Route path="/auth/*" element={<BridgeAuthRoutes />} />
+      <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
     </Routes>
   );
 }
 ```
 
-`<ProtectedRoute>` shows a loading state until auth resolves, then either renders its children or starts the login flow — hosted portal or your `loginRoute`, depending on config.
+**TanStack Router:** import `BridgeAuthRoutes` from `@nebulr-group/bridge-react/tanstack-router` and mount it with `createRoute({ getParentRoute: () => rootRoute, path: 'auth/$', component: BridgeAuthRoutes })` (file-based: `src/routes/auth/$.tsx`). **No router:** `<BridgeAuthRoutes base="/auth" />` from the main entry.
+
+The adapter components also register the router as Bridge's navigation, so the guard, the OAuth callback and the paywall redirect stay in-app. An app that renders none of them calls `useBridgeRouter()` from the same entry once inside the router — skipping that makes post-login redirects full page reloads.
+
+`<ProtectedRoute>` shows a loading state until auth resolves, then either renders its children or starts the login flow — hosted portal or your `loginRoute`, remembering the page the visitor asked for.
+
+To change how the sign-in pages look: `--bridge-*` CSS tokens first; then `frame(page, children)` / `heading(page)` render props on `<BridgeAuthRoutes>`; then take one page over by element, `pages={{ login: <MyLoginPage /> }}`. See `learning/mechanisms.md`.
 
 ## Step 6 — Read the user
 
@@ -153,12 +127,13 @@ Do not declare this done on a clean type-check. Run the app and confirm:
 3. A reload keeps you signed in.
 4. Logout returns you to a public route.
 
-Step 2 is the one that catches a missing router adapter, and it is invisible in any test that does not use a real browser.
+Step 2 is the one that catches a missing router registration, and it is invisible in any test that does not use a real browser.
 
 ## Where to go next
 
 | Goal | Guide |
 |---|---|
+| The rules everything builds on (limits, levels, customising) | `learning/mechanisms.md` |
 | Build login/signup inside your app | `sdk-auth-prompt.md` |
 | Gate features behind a flag | `feature-flags-prompt.md` |
 | Plans, checkout, quotas | `billing-prompt.md` |
