@@ -7,6 +7,10 @@
 
 import { test, expect } from '../../fixtures/auth';
 import { LONG_TIMEOUT, MED_TIMEOUT } from '../../fixtures/timeouts';
+// Static on purpose: a dynamic `await import()` of this .ts fixture inside a
+// test fails with "Cannot use import statement outside a module" whenever no
+// other spec in the same worker has loaded it first (e.g. running this folder).
+import { createCleanContext } from '../../fixtures/clean-page';
 
 test.describe('Subscription Plans', () => {
   test('/subscription page renders plan cards', async ({ authenticatedPage }) => {
@@ -216,7 +220,6 @@ test.describe('Subscription Plans', () => {
   });
 
   test('/subscription is not accessible without authentication', async ({ browser }) => {
-    const { createCleanContext } = await import('../../fixtures/clean-page');
     const { page, cleanup } = await createCleanContext(browser);
 
     try {

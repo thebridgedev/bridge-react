@@ -208,10 +208,15 @@ test.describe('Welcome Paywall — first-time user flow', () => {
         (url) => !url.hostname.includes('stripe.com'),
         { timeout: 60_000 } // Stripe processing can take a while
       );
-      // Wait for the post-checkout subscription UI to finish rendering its
-      // active-billing state. PlanSelector surfaces active billing via
-      // data-state="active".
-      await expect(page.locator('[data-bridge-plan-selector][data-state="active"]')).toBeVisible({
+      // TBP-743 — a completed checkout lands on the success page
+      // (the paywall's default successRedirect, /subscription/success), which
+      // re-reads the subscription and names the plan just bought.
+      await page.waitForURL('**/subscription/success', { timeout: LONG_TIMEOUT });
+      const success = page.locator('[data-bridge-billing-route="success"]');
+      await expect(success.getByRole('heading', { name: "You're all set" })).toBeVisible({
+        timeout: MED_TIMEOUT,
+      });
+      await expect(success.locator('.bss-plan')).toHaveText(PAYWALL_PLAN.definition.name, {
         timeout: LONG_TIMEOUT,
       });
 

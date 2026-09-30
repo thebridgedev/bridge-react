@@ -90,6 +90,15 @@ function FlagContextDemoPage() {
       setError('BridgeFlags instance not available');
       return;
     }
+    // Seed the instance we are about to read, not only the one that existed at
+    // mount. The demo runs under <StrictMode>: its dev-only mount → unmount →
+    // remount runs this page's mount effect (which seeds the instance created
+    // during render) BEFORE <BridgeProvider>'s remount effect replaces that
+    // instance with a fresh one. Seeding only at mount left the test flag in a
+    // discarded instance, so every eval read an empty cache and returned the
+    // default `false` — the enterprise branch never matched. A production build
+    // mounts once and never hits this.
+    bridge.upsert(TEST_FLAG);
     const r = bridge.flag<boolean>(TEST_FLAG_KEY, false, { attributes: { plan } });
     setLastPlan(plan);
     setResult(r.value);
