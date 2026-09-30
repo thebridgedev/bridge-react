@@ -13,7 +13,7 @@
 // bump and re-render only when the resolved value actually changes.
 
 import { useCallback, useRef, useSyncExternalStore } from 'react';
-import type { EvalContext, FlagEvalResult } from '@nebulr-group/bridge-auth-core';
+import type { EvalContext, FlagEvalResult, FlagOffReason } from '@nebulr-group/bridge-auth-core';
 import { evaluateFlag, subscribeToFlagChanges } from './registry';
 
 // ── Module-level reactive version bus ─────────────────────────────────────────
@@ -98,7 +98,19 @@ export function useFlag<T>(
   key: string,
   defaultValue: T,
   context?: Partial<EvalContext>,
-): { readonly value: T; readonly passed: boolean } {
+): {
+  readonly value: T;
+  readonly passed: boolean;
+  /**
+   * TBP-756 — why the feature is off, when Bridge decided it is: `'plan'` (an
+   * upgrade alone would turn it on), `'permission'` (this person's role or
+   * privileges), `'off'`, `'rule'` or `'rollout'`. Undefined while the flag is
+   * on or not loaded yet.
+   */
+  readonly reason?: FlagOffReason;
+  /** TBP-756 — with `reason: 'plan'`, the plan feature the rule asks for. */
+  readonly feature?: string;
+} {
   // Cache the last resolved result so `getSnapshot` returns a stable reference
   // when the underlying value hasn't changed — required by useSyncExternalStore
   // to avoid an infinite render loop.
@@ -108,7 +120,13 @@ export function useFlag<T>(
   const getSnapshot = useCallback((): FlagEvalResult<T> => {
     const next = evaluateFlag<T>(key, defaultValue, context);
     const prev = lastRef.current;
-    if (prev && prev.passed === next.passed && sameValue(prev.value, next.value)) {
+    if (
+      prev &&
+      prev.passed === next.passed &&
+      sameValue(prev.value, next.value) &&
+      prev.reason === next.reason &&
+      prev.feature === next.feature
+    ) {
       return prev;
     }
     lastRef.current = next;
@@ -119,7 +137,7 @@ export function useFlag<T>(
   }, [key, defaultValue, contextKey]);
 
   const result = useSyncExternalStore(subscribeVersion, getSnapshot, getSnapshot);
-  return { value: result.value, passed: result.passed };
+  return { value: result.value, passed: result.passed, reason: result.reason, feature: result.feature };
 }
 
 function safeStringify(v: unknown): string {
