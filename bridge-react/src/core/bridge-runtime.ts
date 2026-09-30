@@ -166,10 +166,13 @@ function startRefresh(): Promise<unknown> {
 // published before that is already in the database, so a REST read sees it,
 // and anything published after arrives on the socket.
 //
-// Loop safety: the catch-up never touches tokens (plain fetch — react wraps no
-// global fetch — with the socket's own token), so it cannot cause another
-// reauthorize. Rounds are serialized by the gate in startBridgeRuntime; this
-// counter only marks a round stale when the runtime stops or is reset.
+// Loop safety: the reads use a plain fetch (react wraps no global fetch) with
+// the socket's own token. The only token they can mint is the reconcile's
+// (TBP-700) and the billing read's stale-sign-in retry (TBP-762); a minted
+// token that carries the same authority does not replace the socket (see
+// applyTokens), so neither can cause a reauthorize loop. Rounds are
+// serialized by the gate in startBridgeRuntime; this counter only marks a
+// round stale when the runtime stops or is reset.
 let _catchUpSeq = 0;
 
 /** What one catch-up round recovered, for the authorization notification. */
@@ -189,7 +192,10 @@ async function catchUpBillingState(isStale: () => boolean): Promise<boolean | un
   if (!accessToken || !appId) return undefined; // signed out: no workspace billing to repair
   let state: BillingSubscriptionState;
   try {
-    state = await fetchBillingState({ apiBaseUrl, accessToken, appId });
+    // TBP-762 — right after a checkout Bridge marks the sign-in out of date;
+    // this read then answers 401 TOKEN_VERSION_STALE. The handler mints a
+    // fresh token and the read is retried once instead of applying nothing.
+    state = await fetchBillingState({ apiBaseUrl, accessToken, appId, onTokenStale: tokenStaleHandler() });
   } catch (err) {
     // Best-effort: the next push or reconnect gets another chance.
     logger.debug('[bridge-runtime] billing catch-up failed:', err);
@@ -227,7 +233,10 @@ async function catchUpSessionSnapshot(isStale: () => boolean): Promise<CatchUpCh
     // Stopped, or the session changed while this was in flight: the answer
     // describes a session we no longer have. A token change reauthorizes, and
     // that reconnect catches up again with the right token.
-    if (isStale() || _currentAuthToken !== token) return none;
+    // A new token for the SAME user, workspace and app is not a new session:
+    // the reconcile (TBP-700) rotates the token on every open, concurrently
+    // with this read.
+    if (isStale() || !sameSession(token, _currentAuthToken)) return none;
     const changes = applyCatchUpSnapshot(data);
     if (changes.entitlementsChanged && data?.tenant?.entitlements) {
       // Keep auth-core's copy (what flag targeting reads) in step too.
@@ -286,7 +295,7 @@ async function catchUpQuotaSnapshots(isStale: () => boolean): Promise<void> {
         });
         if (!res.ok) return;
         const data = (await res.json()) as QuotaCatchUpBody;
-        if (isStale() || _currentAuthToken !== token) return; // a workspace we no longer have
+        if (isStale() || !sameSession(token, _currentAuthToken)) return; // a workspace we no longer have
         if (quotas.getAll().get(metric) !== before) return; // a push won the race
         // `null` is a real answer ("no quota configured") and drops the entry.
         quotas.applyInitialSnapshot(metric, data ?? null);
@@ -298,45 +307,44 @@ async function catchUpQuotaSnapshots(isStale: () => boolean): Promise<void> {
 }
 
 /**
- * One catch-up round: all three halves in parallel, then ONE authorization
- * notification for whatever they recovered.
+ * One catch-up round: the three reads and the user-state reconcile in
+ * parallel, then ONE authorization notification for whatever they recovered.
  *
  * TBP-654 — a recovered plan change needs the token carrying it, like the push
- * it replaces, unless this round's reconnect already started a refresh (a
- * genuine reconnect does, after the missed push, so its token has the plan).
- * Only an actual change refreshes: the reconnect that refreshed token causes
- * finds the plan unchanged, so this cannot loop.
+ * it replaces. TBP-700: the reconcile in this same round mints that token (a
+ * `fresh` refresh taken after every channel was live, so it sees the change),
+ * and the round waits for it before notifying — no second refresh.
  *
  * TBP-686 — "change" means a known value that moved. Filling an EMPTY slice is
  * hydration: the catch-up stands in for a lost `session.snapshot` push, and a
- * delivered push fills the slices without notifying anyone or refreshing. A
- * first connect whose push was lost must cost no more than one whose push
- * arrived — no refresh, no reauthorize, no second socket swap.
+ * delivered push fills the slices without notifying anyone. A first connect
+ * whose push was lost costs no more than one whose push arrived.
  */
 async function runCatchUp(
-  { reconnect, refreshedAtReconnect }: { reconnect: boolean; refreshedAtReconnect: boolean },
+  { reconnect }: { reconnect: boolean },
   isStale: () => boolean,
+  reconcile: () => Promise<void>,
 ): Promise<void> {
   const [billingPlanChanged, snapshot] = await Promise.all([
     catchUpBillingState(isStale),
     catchUpSessionSnapshot(isStale),
     catchUpQuotaSnapshots(isStale),
+    reconcile(),
   ]);
   if (isStale()) return;
   const planChanged = billingPlanChanged === true || snapshot.planChanged;
-  const refresh = planChanged && !refreshedAtReconnect;
   if (reconnect) {
     // Today's reconnect contract: gate caches drop once the billing catch-up
     // lands (and now also when the snapshot recovered something it missed).
     if (billingPlanChanged !== undefined || planChanged || snapshot.entitlementsChanged) {
-      authorizationChanged('reconnect', { refresh });
+      authorizationChanged('reconnect', { refresh: false });
     }
   } else if (planChanged) {
     // TBP-686 — a first connect is not a reconnect: speak up only when the
     // catch-up actually moved plan/status or entitlements.
-    authorizationChanged('subscription.plan_changed', { refresh });
+    authorizationChanged('subscription.plan_changed', { refresh: false });
   } else if (snapshot.entitlementsChanged) {
-    authorizationChanged('entitlements.changed', { refresh });
+    authorizationChanged('entitlements.changed', { refresh: false });
   }
 }
 
@@ -382,8 +390,8 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
     // of parking. A signed-out session has nothing to refresh. Loop safety:
     // the refreshed token lands in the token subscription below, whose
     // reauthorize() is a no-op while that episode is still connecting, and
-    // the reconnect it produces is flagged self-induced so setOnOpen does not
-    // refresh a second time.
+    // the reconcile after the reconnect (TBP-700) mints once more and stops
+    // there — a token that changes nothing does not replace the socket.
     refreshAuthToken:
       options.realtime?.refreshAuthToken ??
       (async () => {
@@ -397,36 +405,87 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
       }),
   });
 
+  const rt = _realtime;
   let _connectedOnce = false;
-  // Set just before _realtime.reauthorize() so the resulting reconnect's
-  // setOnOpen knows the token is already fresh and skips its proactive refresh.
-  let _reauthInFlight = false;
+
+  // TBP-700 — bookkeeping for reconcileUserState() below.
+  let _reconciling = 0;
+  let _reconcileSawChange = false;
+  let _reconcileSwapsInARow = 0;
+
+  // TBP-700 — the same repair for the user's own state: role, privileges,
+  // anything that bumps the server's tokenVersion and publishes
+  // `user.state_changed`. That push is lost like the others when it is
+  // published while the socket is being replaced, and nothing recovered it:
+  // the session snapshot's `user` is read from the token being presented, and
+  // a reconnect our own reauthorize() caused skipped the token refresh (the
+  // TBP-644 loop guard). On stage (bridge-svelte, same wiring) a role change
+  // landed in that window in 4 of 4 runs, and the user kept the old role until
+  // a reload.
+  //
+  // The server's current tokenVersion and claims are only available by
+  // minting, so every connect and reconnect ends with ONE refresh, and the
+  // token that comes back is compared with the one we had (see applyTokens):
+  //   - same authority (only iat/exp/jti moved): nothing was missed, and the
+  //     socket that was just subscribed stays — no swap, so no loop;
+  //   - anything else (tv, role, plan…): that IS the missed change. It is
+  //     handled like the push would have been — gates re-check and the socket
+  //     is re-authorized with the new token — and that reconnect reconciles
+  //     again, which then finds nothing new.
+  //
+  // `fresh: true` (auth-core 0.8, TBP-700) keeps this from joining a refresh
+  // that started before the channels were live, whose token could predate the
+  // very change we are looking for.
+  const reconcileUserState = async (trackAsPending: boolean): Promise<void> => {
+    if (_realtime !== rt || !_currentAuthToken) return; // signed out: no user state
+    let auth: ReturnType<typeof getBridgeAuth>;
+    try {
+      auth = getBridgeAuth();
+    } catch {
+      return; // BridgeAuth not constructed — nothing to refresh with.
+    }
+    _reconciling += 1;
+    _reconcileSawChange = false;
+    let refresh: Promise<unknown>;
+    try {
+      refresh = Promise.resolve(auth.refreshTokens({ fresh: true }));
+    } catch (err) {
+      refresh = Promise.reject(err);
+    }
+    // TBP-654 — on a reconnect this refresh is the pending authorization
+    // change too: a plan or role change missed while the socket was down
+    // lands with it, and a gate deciding meanwhile waits for it (bounded).
+    if (trackAsPending && !pendingAuthorizationChange()) void trackAuthorizationChange(refresh);
+    try {
+      await refresh;
+    } catch {
+      // Best-effort: the next reconnect is the fallback.
+    } finally {
+      _reconciling -= 1;
+      if (!_reconcileSawChange) _reconcileSwapsInARow = 0;
+    }
+  };
 
   // TBP-686 — one coalescing gate for every catch-up half. One round per open;
   // opens that land while a round is in flight fold into ONE follow-up (the
   // in-flight answer may predate the newest socket going live, so it cannot
   // stand in for it). An open storm therefore costs one extra round, not one
-  // per open. The follow-up is a reconnect / already refreshed if ANY of the
-  // opens it folds was.
-  const rt = _realtime;
+  // per open. The follow-up is a reconnect if ANY of the opens it folds was.
   let _catchUpInFlight = false;
-  let _catchUpQueued: { reconnect: boolean; refreshedAtReconnect: boolean } | undefined;
-  const requestCatchUp = (round: { reconnect: boolean; refreshedAtReconnect: boolean }): void => {
+  let _catchUpQueued: { reconnect: boolean } | undefined;
+  const requestCatchUp = (round: { reconnect: boolean }): void => {
     // A stopped (or replaced) runtime must never fetch: its queued follow-up
     // would read the NEXT session's token.
     if (_realtime !== rt) return;
     if (!_currentAuthToken) return; // signed out: no tenant or user scope to fetch
     if (_catchUpInFlight) {
-      _catchUpQueued = {
-        reconnect: round.reconnect || !!_catchUpQueued?.reconnect,
-        refreshedAtReconnect: round.refreshedAtReconnect || !!_catchUpQueued?.refreshedAtReconnect,
-      };
+      _catchUpQueued = { reconnect: round.reconnect || !!_catchUpQueued?.reconnect };
       return;
     }
     _catchUpInFlight = true;
     const seq = _catchUpSeq;
     const isStale = () => seq !== _catchUpSeq || _realtime !== rt;
-    void runCatchUp(round, isStale)
+    void runCatchUp(round, isStale, () => reconcileUserState(round.reconnect))
       .catch(() => {
         // Every half is best-effort already; this backstop keeps a repair
         // failure from surfacing as an unhandled rejection in the host app.
@@ -438,38 +497,39 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
         if (next) requestCatchUp(next);
       });
   };
+
+  // TBP-700 — when to catch up. The reads above only work if they reach the
+  // server AFTER every channel is live: anything published before that is
+  // already in the database and the read sees it, anything after arrives on
+  // the socket. `open` fires on the FIRST accepted subscription, with the user
+  // channel possibly still pending, so an auth-core that can say "all
+  // subscribed" (0.8+) is asked; an older one falls back to `open`.
+  //
+  // One trigger for the initial connect, a genuine reconnect and the one our
+  // own reauthorize() causes alike: losing pushes is a property of the socket
+  // swap, whoever caused it (TBP-660), and the first connect is where the
+  // snapshot push always loses its race (TBP-686).
+  const realtimeWithSubscribed = _realtime as RealtimeClient & {
+    setOnSubscribed?: (hook: () => void) => void;
+  };
+  const catchUpOnSubscribed = typeof realtimeWithSubscribed.setOnSubscribed === 'function';
+  // A connection's `subscribed` always follows its `open`, so `_connectedOnce`
+  // already counts this connection: it is a reconnect when an earlier one
+  // subscribed.
+  let _subscribedOnce = false;
+  if (catchUpOnSubscribed) {
+    realtimeWithSubscribed.setOnSubscribed!(() => {
+      requestCatchUp({ reconnect: _subscribedOnce });
+      _subscribedOnce = true;
+    });
+  }
+
   _realtime.setOnOpen(() => {
     _setRealtimeStatus('open');
-    // On reconnect (not initial connect), proactively refresh tokens to sync
-    // any tokenVersion bump missed while the WS was down.
-    //
-    // EXCEPT when this reconnect was caused by our OWN reauthorize() below (a
-    // token-only refresh): the token is already current, and refreshing again
-    // would mint a new JWT → tokenStore change → reauthorize() → reconnect →
-    // setOnOpen → refresh → … an unbounded loop hammering /auth/token (~32/sec,
-    // jamming the page's main thread). Only genuine external reconnects
-    // (network blips, server restarts) should trigger the catch-up refresh.
-    const causedByReauthorize = _reauthInFlight;
-    _reauthInFlight = false;
-    const refreshNow = _connectedOnce && !causedByReauthorize;
-    if (refreshNow) {
-      // TBP-654 — signed in, this refresh is the pending authorization change
-      // too: a plan change missed while the socket was down lands with it.
-      const refresh = startRefresh();
-      if (_currentAuthToken && !pendingAuthorizationChange()) void trackAuthorizationChange(refresh);
-      else refresh.catch(() => { /* best-effort */ });
-    }
-    // TBP-660 — but the state catch-up runs on EVERY reconnect, including
-    // the ones reauthorize() causes: those are exactly the swaps a plan
-    // change's own push can fall into.
-    //
-    // TBP-686 — and on the FIRST connect too. Gating it on `_connectedOnce`
-    // reserved the repair for reconnects, but the first connect is exactly
-    // where the snapshot goes missing (published during authorize, before the
-    // subscription is live), leaving a signed-in page with a null workspace
-    // id, name and branding all session. requestCatchUp returns early when
-    // signed out and coalesces concurrent opens.
-    requestCatchUp({ reconnect: _connectedOnce, refreshedAtReconnect: refreshNow });
+    // No token refresh here any more (TBP-700): the reconcile in every
+    // catch-up round mints on EVERY open, the self-induced ones included, and
+    // cannot loop — see reconcileUserState and applyTokens.
+    if (!catchUpOnSubscribed) requestCatchUp({ reconnect: _connectedOnce });
     _connectedOnce = true;
     for (const fn of _onOpenSubs) {
       try { fn(); } catch { /* subscriber errors swallowed */ }
@@ -496,9 +556,6 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
   // reason as setOnDegraded.
   _realtime.setOnStatusChange?.((status) => {
     _setRealtimeStatusDetail(status);
-    // A parked client never opens, so a reauthorize that ended in a refusal
-    // must not leave the self-induced flag set for the next genuine reconnect.
-    if (status.state === 'unauthorized') _reauthInFlight = false;
     for (const fn of _onStatusSubs) {
       try { fn(status); } catch { /* subscriber errors swallowed */ }
     }
@@ -592,10 +649,7 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
   // (none → A) and sign-out (A → none). Keying this on rotation only meant a
   // session that signed in after page load kept the anonymous connection —
   // or stayed parked after a refusal — until something else reconnected it.
-  // Flagged self-induced so setOnOpen skips its catch-up refresh (see the
-  // loop note there): the token we reconnect with is already current.
   const reauthorizeForTokenChange = (): void => {
-    _reauthInFlight = true;
     void _realtime!.reauthorize();
   };
 
@@ -606,7 +660,28 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
   const applyTokens = (accessToken: string | null | undefined, seed = false): void => {
     const prevAuthToken = _currentAuthToken;
     _currentAuthToken = accessToken ?? undefined;
-    const tokenChanged = !seed && prevAuthToken !== _currentAuthToken;
+    let tokenChanged = !seed && prevAuthToken !== _currentAuthToken;
+    let reauthorize = tokenChanged;
+
+    // TBP-700 — the token minted by the post-(re)connect reconcile.
+    if (tokenChanged && _reconciling > 0) {
+      if (_realtime!.getState?.() === 'open' && sameAuthorization(prevAuthToken, _currentAuthToken)) {
+        // Only its timing moved: nothing was missed, every verdict taken with
+        // the old token stands, and the socket that was just subscribed has
+        // exactly this authority. Replacing it would open the very window
+        // this repair exists for — and loop.
+        tokenChanged = false;
+        reauthorize = false;
+      } else {
+        // The server moved on while we were not listening: the lost
+        // `user.state_changed`, recovered. Re-authorize like the push would
+        // have — bounded, so a claim that differs on every mint cannot turn
+        // this into a reconnect loop.
+        _reconcileSawChange = true;
+        if (_reconcileSwapsInARow >= MAX_RECONCILE_SWAPS) reauthorize = false;
+        else _reconcileSwapsInARow += 1;
+      }
+    }
 
     // TBP-654 — a new token (sign-in, the refresh a plan change causes,
     // sign-out) invalidates every gate verdict taken with the old one.
@@ -618,7 +693,7 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
       // rather than riding the old user's socket until something drops it.
       _realtime!.setUserId(undefined);
       _realtime!.setWorkspaceId(undefined);
-      if (tokenChanged) reauthorizeForTokenChange();
+      if (reauthorize) reauthorizeForTokenChange();
       return;
     }
 
@@ -632,7 +707,7 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
     // setUserId is a no-op when the user is unchanged (token-only refresh),
     // and a setter-driven reconnect waits out a backoff and cannot lift a
     // parked refusal — so reauthorize explicitly on every value change.
-    if (tokenChanged) reauthorizeForTokenChange();
+    if (reauthorize) reauthorizeForTokenChange();
   };
 
   // Seed from current token state, then subscribe for changes.
@@ -767,6 +842,62 @@ export function __resetBridgeRuntime(): void {
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * TBP-762 — the handler that renews an out-of-date sign-in, for billing and
+ * quota reads (`onTokenStale`). Undefined when BridgeAuth is not constructed
+ * or the installed auth-core predates it (the read then simply fails, as
+ * before).
+ */
+export function tokenStaleHandler(): (() => Promise<string | null>) | undefined {
+  try {
+    const auth = getBridgeAuth() as ReturnType<typeof getBridgeAuth> & {
+      tokenStaleHandler?: () => () => Promise<string | null>;
+    };
+    return typeof auth.tokenStaleHandler === 'function' ? auth.tokenStaleHandler() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * TBP-700 — how many reconcile-driven socket replacements may follow one
+ * another before the reconcile stops replacing the socket (it still adopts the
+ * token). A genuine missed change costs one; a second is a change published
+ * during that swap. More than a few in a row means a claim differs on every
+ * mint, and replacing the socket forever would be the TBP-644 loop again.
+ */
+const MAX_RECONCILE_SWAPS = 3;
+
+/** Claims that differ on every mint without meaning anything changed. */
+const PER_MINT_CLAIMS = new Set(['iat', 'exp', 'nbf', 'jti', 'auth_time']);
+
+/** Same user, workspace and app — the scope a catch-up read belongs to. */
+function sameSession(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const ca = decodeJwtPayload(a);
+  const cb = decodeJwtPayload(b);
+  if (!ca || !cb) return false;
+  return ca.sub === cb.sub && ca.tid === cb.tid && ca.aid === cb.aid;
+}
+
+/**
+ * TBP-700 — two tokens carry the same authority: every claim is equal except
+ * the per-mint ones. Unreadable tokens are never the same.
+ */
+function sameAuthorization(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const ca = decodeJwtPayload(a);
+  const cb = decodeJwtPayload(b);
+  if (!ca || !cb) return false;
+  const keys = new Set([...Object.keys(ca), ...Object.keys(cb)]);
+  for (const k of keys) {
+    if (PER_MINT_CLAIMS.has(k)) continue;
+    if (JSON.stringify(ca[k]) !== JSON.stringify(cb[k])) return false;
+  }
+  return true;
+}
 
 /** Decode a JWT payload without signature verification (client context only). */
 function decodeJwtPayload(token: string): Record<string, unknown> | null {

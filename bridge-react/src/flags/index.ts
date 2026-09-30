@@ -32,7 +32,12 @@ export {
 export { useFlag, flagStore, type FlagStore } from './use-flag';
 
 // Component
-export { FeatureFlag, default as FeatureFlagComponent, type FeatureFlagProps } from './FeatureFlag';
+export {
+  FeatureFlag,
+  default as FeatureFlagComponent,
+  type FeatureFlagProps,
+  type FeatureFlagOffInfo,
+} from './FeatureFlag';
 
 // Reactive realtime connection status (subscribe in components to show
 // offline indicators, retry banners, etc.).

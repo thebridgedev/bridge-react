@@ -18,6 +18,7 @@
 import { useEffect } from 'react';
 import { useBridge } from '@nebulr-group/bridge-auth-core';
 import { getBridgeAuth } from '../../core/bridge-instance';
+import { tokenStaleHandler } from '../../core/bridge-runtime';
 import { useBridgeSnapshot } from '../../hooks/use-bridge-readable';
 
 export interface BridgeSubscriptionStatusProps {
@@ -45,6 +46,9 @@ export function BridgeSubscriptionStatus({
       apiBaseUrl: ctx.apiBaseUrl,
       accessToken: ctx.accessToken,
       appId: ctx.appId,
+      // TBP-762 — right after a checkout the sign-in is out of date; renew it
+      // and retry once instead of showing "Subscription unavailable".
+      onTokenStale: tokenStaleHandler(),
     });
     // subscription is the auth-core singleton — stable across renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -6,10 +6,13 @@
  *    signed in after page load (none → A) kept the anonymous connection, and a
  *    client parked after a refusal stayed parked until something else
  *    reconnected it. It must reauthorize on every change of the token value.
- * 2. That must not reopen the self-induced refresh loop the on-open refresh
- *    guard exists for.
- * 3. `refreshAuthToken` is wired, and a refresh it triggers is not followed by
- *    a second one on the reconnect.
+ * 2. That must not reopen the self-induced refresh loop. TBP-700 replaced the
+ *    "self-induced reconnects skip the refresh" guard (that skip is how a role
+ *    change published during our own socket swap was lost): every connect
+ *    reconciles with ONE fresh refresh, and a token that carries the same
+ *    authority does not replace the socket — so nothing loops.
+ * 3. `refreshAuthToken` is wired, and the reconnect it causes reconciles once
+ *    and stops there.
  * 4. The full RealtimeStatus reaches the public API; 'degraded' is wired.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
@@ -111,6 +114,13 @@ let refreshCalls = 0;
 /** What the patched BridgeAuth.refreshTokens does (after counting). */
 let refreshImpl: () => Promise<{ accessToken: string } | null> = async () => null;
 
+/** A refresh that mints the same authority with a new iat, like the server. */
+const mintSame = async () => {
+  const t = token();
+  setTokens(t);
+  return { accessToken: t };
+};
+
 async function start(): Promise<void> {
   startBridgeRuntime({
     realtime: { websocketFactory: (u, p) => new FakeWebSocket(u, p), fetchFn, reportStatus: false, diagnose: false, reconnectBaseMs: 5 },
@@ -124,7 +134,13 @@ async function start(): Promise<void> {
   await settle();
 }
 
+// The post-connect catch-up reads /billing/state, /session/init … with the
+// global fetch. Answer at once: a real network lookup of the fake host keeps a
+// round in flight, and the next connect's round folds into it.
+const realFetch = globalThis.fetch;
+
 beforeEach(() => {
+  globalThis.fetch = (async () => new Response('{}', { status: 404 })) as unknown as typeof fetch;
   __resetBridgeRuntime();
   _resetBridgeInstance();
   FakeWebSocket.instances = [];
@@ -144,6 +160,7 @@ beforeEach(() => {
 afterEach(async () => {
   await stopBridgeRuntime();
   __resetBridgeRuntime();
+  globalThis.fetch = realFetch;
 });
 
 // ── 1. reauthorize on every token value change ─────────────────────────────
@@ -198,33 +215,43 @@ describe('reauthorizes on every token value change (TBP-644)', () => {
 
 // ── 2. the self-induced refresh loop guard still holds ─────────────────────
 
-describe('the self-induced refresh loop guard still holds (TBP-644)', () => {
-  it('the reconnect caused by a sign-in does not fire the on-open refresh; a genuine one does', async () => {
+describe('every connect reconciles user state without looping (TBP-644, TBP-700)', () => {
+  it('the reconnect caused by a sign-in reconciles once and stays on its socket; a genuine one reconciles too', async () => {
     await start();
-    connectOk(lastWs()); // initial, anonymous open
-    setTokens(token());
-    await settle();
-    connectOk(lastWs()); // the reconnect the sign-in reauthorize caused
+    connectOk(lastWs()); // initial, anonymous open — nothing to reconcile
     await settle();
     expect(refreshCalls).toBe(0);
+    setTokens(token());
+    await settle();
+    expect(reauthCalls).toBe(1);
+    refreshImpl = mintSame;
+    const sockets = FakeWebSocket.instances.length;
+    connectOk(lastWs()); // the reconnect the sign-in reauthorize caused
+    await settle();
+    expect(refreshCalls).toBe(1);
+    expect(reauthCalls).toBe(1); // the reconcile's token replaced nothing
+    expect(FakeWebSocket.instances.length).toBe(sockets);
 
     lastWs().close(1006); // a genuine drop
     await settle(40);
     connectOk(lastWs());
     await settle();
-    expect(refreshCalls).toBe(1);
+    expect(refreshCalls).toBe(2);
+    expect(reauthCalls).toBe(1);
   });
 });
 
 // ── 3. refreshAuthToken ────────────────────────────────────────────────────
 
 describe('refreshAuthToken is wired (TBP-644)', () => {
-  it('a refused session refreshes once, reconnects with the NEW token, and does not refresh again on open', async () => {
+  it('a refused session refreshes once, reconnects with the NEW token, and the reconnect reconciles once and stops', async () => {
     setTokens(token());
     await start();
-    connectOk(lastWs()); // open #1
+    connectOk(lastWs()); // open #1 — reconciles (refreshImpl → null: nothing new)
+    await settle();
     lastWs().close(1006); // drop → reconnect …
     await settle(40);
+    const before = refreshCalls;
 
     const fresh = token();
     refreshImpl = async () => {
@@ -233,14 +260,20 @@ describe('refreshAuthToken is wired (TBP-644)', () => {
     };
     refuse(lastWs()); // … which Bridge refuses
     await settle();
-    expect(refreshCalls).toBe(1);
+    expect(refreshCalls).toBe(before + 1);
     expect(presented(lastWs())).toBe(`Bearer ${fresh}`);
 
+    refreshImpl = mintSame;
+    const reauths = reauthCalls;
+    const sockets = FakeWebSocket.instances.length;
     connectOk(lastWs()); // open #2 on the refreshed token
     await settle();
     expect(getBridgeRealtime()!.getState()).toBe('open');
-    // Without the self-induced flag this open would refresh AGAIN.
-    expect(refreshCalls).toBe(1);
+    // The reconcile's one fresh mint carries the same authority, so it
+    // replaces no socket and nothing refreshes again.
+    expect(refreshCalls).toBe(before + 2);
+    expect(reauthCalls).toBe(reauths);
+    expect(FakeWebSocket.instances.length).toBe(sockets);
   });
 
   it('a signed-out session has nothing to refresh', async () => {

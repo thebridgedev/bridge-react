@@ -108,7 +108,7 @@ export { RealtimeDevBadge, type RealtimeDevBadgeProps } from './components/devel
 // Feature Flags 2.0 — declarative component + reactive hook (registry-backed,
 // rides on the core runtime mounted by <BridgeProvider>). Hard-replaced the
 // legacy `<FeatureFlag flagName>` / `useFeatureFlag` surface.
-export { FeatureFlag, type FeatureFlagProps } from './flags/FeatureFlag';
+export { FeatureFlag, type FeatureFlagProps, type FeatureFlagOffInfo } from './flags/FeatureFlag';
 
 // Hooks
 export { useAuth } from './hooks/use-auth';
