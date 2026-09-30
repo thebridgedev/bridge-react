@@ -74,7 +74,10 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 type Answer = () => Promise<{ status: number; body: unknown }>;
 
+/** The transport finished (re)connecting: `open`, then every channel subscribed. */
 let open: () => void;
+let openHook: (() => void) | undefined;
+let subscribedHook: (() => void) | undefined;
 let billingFetches: string[] = [];
 /** Every catch-up request, as `path` (+ its Authorization / x-app-id headers). */
 let calls: Array<{ path: string; auth: string; appId: string }> = [];
@@ -85,6 +88,10 @@ let sessionResponses: Answer[] = [];
 /** Next responses for GET /usage/quota/:metric, per metric. */
 let quotaResponses: Record<string, Answer[]> = {};
 let refreshes = 0;
+/** The options every refreshTokens() call was made with. */
+let refreshOptions: Array<{ fresh?: boolean } | undefined> = [];
+/** What the next refreshTokens() calls resolve to. */
+let refreshResult: () => { accessToken: string; refreshToken: string } | null = () => null;
 let reauthorizes = 0;
 const spies: Array<{ mockRestore(): void }> = [];
 
@@ -130,19 +137,28 @@ beforeEach(() => {
   useBridge().quotas.__resetForTests();
   useBridge().entitlementsStore.__resetForTests();
   initBridge({ appId: 'app-1', apiBaseUrl: API } as never);
+  openHook = undefined;
+  subscribedHook = undefined;
+  open = () => {
+    openHook?.();
+    subscribedHook?.();
+  };
   billingFetches = [];
   calls = [];
   billingResponses = [];
   sessionResponses = [];
   quotaResponses = {};
   refreshes = 0;
+  refreshOptions = [];
+  refreshResult = () => null;
   reauthorizes = 0;
 
   const auth = getBridgeAuth();
   spies.push(
-    spyOn(auth, 'refreshTokens').mockImplementation((async () => {
+    spyOn(auth, 'refreshTokens').mockImplementation((async (options?: { fresh?: boolean }) => {
       refreshes += 1;
-      return null;
+      refreshOptions.push(options);
+      return refreshResult();
     }) as never),
     spyOn(auth, 'invalidateFeatureFlagCache').mockImplementation(() => {}),
   );
@@ -151,7 +167,12 @@ beforeEach(() => {
     spyOn(billingBridge, 'handle').mockImplementation((() => () => {}) as never),
     spyOn(billingBridge, 'attachToRealtimeClient').mockImplementation((() => {}) as never),
     spyOn(RealtimeClient.prototype, 'setOnOpen').mockImplementation(function (this: RealtimeClient, h: () => void) {
-      open = h;
+      openHook = h;
+    } as never),
+    // TBP-700 — auth-core 0.8 says when every channel is subscribed; the
+    // catch-up runs then, not on the first ack.
+    spyOn(RealtimeClient.prototype, 'setOnSubscribed').mockImplementation(function (this: RealtimeClient, h: () => void) {
+      subscribedHook = h;
     } as never),
     spyOn(RealtimeClient.prototype, 'reauthorize').mockImplementation((async () => {
       reauthorizes += 1;
@@ -206,29 +227,28 @@ describe('billing catch-up after a realtime reconnect (TBP-660)', () => {
     expect(billingFetches).toEqual([`Bearer ${TOKEN_A}`, `Bearer ${TOKEN_B}`]);
     expect(tenantPlan()).toBe('pro');
     expect(billingPlan()).toBe('pro');
-    // No token catch-up for a self-induced reconnect, and the billing catch-up
-    // caused no further reauthorize. The ONE refresh is TBP-654's: the
-    // catch-up recovered a plan change (free → pro), which needs the token
-    // carrying it, exactly like the push it replaces.
-    expect(refreshes).toBe(1);
+    // TBP-700 — one reconcile per round (first connect + this reconnect),
+    // and that reconcile IS the token carrying the recovered plan change
+    // (TBP-654): no second refresh for it, and no further reauthorize.
+    expect(refreshes).toBe(2);
     expect(reauthorizes).toBe(1);
   });
 
-  it('TBP-654 — a catch-up that finds the plan unchanged starts no refresh, so the recovered change cannot loop', async () => {
+  it('TBP-654 — a recovered plan change costs no refresh beyond the round\'s own reconcile, so it cannot loop', async () => {
     start(TOKEN_A);
     open();
     setToken(TOKEN_B);
-    open(); // self-induced; catch-up recovers free → pro → one refresh
+    open(); // self-induced; folded into one follow-up round that recovers free → pro
     await settle();
-    expect(refreshes).toBe(1);
+    expect(refreshes).toBe(2); // one reconcile per round, nothing more
 
-    // That refresh's token reauthorizes; its reconnect catches up again and
-    // finds pro, which the page already has.
+    // That token reauthorizes; its reconnect catches up again and finds pro,
+    // which the page already has.
     setToken(jwt({ sub: 'user-1', tid: 'ws-1', aid: 'app-1', plan: 'pro', v: 3 }));
     open();
     await settle();
     expect(billingFetches).toHaveLength(3); // first connect + two reconnects
-    expect(refreshes).toBe(1);
+    expect(refreshes).toBe(3);
   });
 
   it('a genuine reconnect keeps its token catch-up and also repairs billing once', async () => {
@@ -237,7 +257,7 @@ describe('billing catch-up after a realtime reconnect (TBP-660)', () => {
     open(); // network blip
     await settle();
 
-    expect(refreshes).toBe(1);
+    expect(refreshes).toBe(2); // each connect reconciles once (TBP-700)
     expect(billingFetches).toHaveLength(2); // first connect + the reconnect
     expect(tenantPlan()).toBe('pro');
   });
@@ -271,17 +291,17 @@ describe('billing catch-up after a realtime reconnect (TBP-660)', () => {
     start(TOKEN_A);
     open();
     await settle();
-    expect(refreshes).toBe(0);
+    expect(refreshes).toBe(1); // the first connect's reconcile
     const reasons: BridgeAuthorizationChangeReason[] = [];
     const off = onBridgeAuthorizationChange((r) => reasons.push(r));
     setToken(TOKEN_B);
     reasons.length = 0; // the token change itself reports 'token'
-    open(); // self-induced reconnect — no proactive refresh; the catch-up finds pro
+    open(); // self-induced reconnect — its reconcile carries the plan the catch-up finds
     await settle();
     off();
     expect(tenantPlan()).toBe('pro');
     expect(reasons).toEqual(['reconnect']);
-    expect(refreshes).toBe(1);
+    expect(refreshes).toBe(2);
   });
 
   it('a signed-out session has no workspace billing to fetch', async () => {
@@ -380,9 +400,10 @@ describe('the first connect catches up too (TBP-686)', () => {
     expect(read(bridge.user)?.id).toBe('user-1');
     expect(tenantPlan()).toBe('free');
     // Filling empty slices is hydration, exactly what the lost push would have
-    // done — and a delivered push neither notifies nor refreshes.
+    // done — and a delivered push neither notifies nor refreshes. The one
+    // refresh is the connect's user-state reconcile (TBP-700).
     expect(reasons).toEqual([]);
-    expect(refreshes).toBe(0);
+    expect(refreshes).toBe(1);
     expect(reauthorizes).toBe(0);
   });
 
@@ -396,7 +417,7 @@ describe('the first connect catches up too (TBP-686)', () => {
     off();
     expect(tenantPlan()).toBe('free'); // the billing half filled it
     expect(reasons).toEqual([]);
-    expect(refreshes).toBe(0);
+    expect(refreshes).toBe(1); // the reconcile only, nothing for the hydration
   });
 
   it('a known plan that moved (A → B) is a change: plan_changed, with the refresh that carries it', async () => {
@@ -414,12 +435,13 @@ describe('the first connect catches up too (TBP-686)', () => {
     expect(refreshes).toBe(1);
   });
 
-  it('does not refresh tokens — the proactive refresh stays reserved for genuine reconnects (TBP-644)', async () => {
+  it('reconciles once with a fresh mint and replaces no socket (TBP-644, TBP-700)', async () => {
     sessionResponses.push(respondWith(200, SNAPSHOT));
     start(TOKEN_A);
     open();
     await settle();
-    expect(refreshes).toBe(0);
+    expect(refreshes).toBe(1);
+    expect(refreshOptions).toEqual([{ fresh: true }]);
     expect(reauthorizes).toBe(0);
   });
 
@@ -508,5 +530,135 @@ describe('the first connect catches up too (TBP-686)', () => {
     slow.release();
     await settle();
     expect(read(bridge.tenant.name)).toBeNull();
+  });
+});
+
+// ── TBP-700 — a user-state change published during a (re)connect ─────────────
+//
+// Regression (stage, bridge-svelte, same wiring): a role change published while
+// the socket was being replaced was lost for good. AppSync has no replay, the
+// session snapshot's `user` is read from the token being presented, and the
+// reconnect our own reauthorize() caused skipped the token refresh (the TBP-644
+// loop guard). The user kept the old role until a reload.
+//
+// The server here is a tv counter; a refresh mints a token carrying the
+// current one. `live` models the socket: a publish is delivered only while it
+// is live, as on AppSync.
+describe('a user-state change published during a (re)connect is never lost (TBP-700)', () => {
+  let serverTv: number;
+  let iat: number;
+  const tokenAt = (tv: number) => {
+    iat += 1;
+    return jwt({ sub: 'user-1', tid: 'ws-1', aid: 'app-1', role: tv > 1 ? 'OWNER' : 'ADMIN', tv, iat });
+  };
+  const currentTv = () => {
+    const at = useBridgeStore.getState().tokens?.accessToken;
+    if (!at) return undefined;
+    return JSON.parse(atob(at.split('.')[1])).tv as number;
+  };
+
+  beforeEach(() => {
+    serverTv = 1;
+    iat = 0;
+    // A refresh mints the server's current state and stores it, like BridgeAuth.
+    refreshResult = () => {
+      const t = { accessToken: tokenAt(serverTv), refreshToken: 'r' };
+      useBridgeStore.setState({ tokens: t } as never);
+      return t;
+    };
+    // The reconcile's token is compared with the socket that was just
+    // subscribed, so the connection has to read as open.
+    spies.push(spyOn(RealtimeClient.prototype, 'getState').mockImplementation((() => 'open') as never));
+  });
+
+  it('a role change published while our own reauthorize() replaces the socket is recovered on the reconnect', async () => {
+    start(tokenAt(1));
+    // The plan never moves here, so nothing but the reconcile can recover the role.
+    billingResponses.push(respondWith(200, FREE), respondWith(200, FREE), respondWith(200, FREE));
+    open();
+    await settle();
+    const reauthsBefore = reauthorizes;
+    setToken(tokenAt(1)); // a token rotation reauthorizes: the socket is being swapped…
+    expect(reauthorizes).toBe(reauthsBefore + 1);
+    serverTv = 2; // …and the role change is published into that gap: lost
+    open(); // the replacement socket
+    await settle();
+    expect(currentTv()).toBe(2);
+    // The recovered role gets its own socket, once — and the reconnect that
+    // causes finds nothing new.
+    expect(reauthorizes).toBe(reauthsBefore + 2);
+    open();
+    await settle();
+    expect(reauthorizes).toBe(reauthsBefore + 2);
+  });
+
+  it('refresh → same authority → no reauthorize, so no reconnect to refresh again', async () => {
+    start(tokenAt(1));
+    for (let i = 0; i < 5; i++) {
+      open();
+      await settle();
+    }
+    // One reconcile per open the TRANSPORT produced, every one a fresh mint,
+    // and not one reconnect of our own making.
+    expect(refreshes).toBe(5);
+    expect(refreshOptions.every((o) => o?.fresh === true)).toBe(true);
+    expect(reauthorizes).toBe(0);
+  });
+
+  it('a new token with the same authority leaves the gates alone', async () => {
+    start(tokenAt(1));
+    const reasons: BridgeAuthorizationChangeReason[] = [];
+    const off = onBridgeAuthorizationChange((r) => reasons.push(r));
+    open();
+    await settle();
+    off();
+    expect(refreshes).toBe(1);
+    expect(reasons).toEqual([]);
+  });
+
+  it('a claim that differs on every mint cannot turn into a reconnect loop', async () => {
+    let n = 0;
+    refreshResult = () => {
+      n += 1;
+      const t = { accessToken: jwt({ sub: 'user-1', tid: 'ws-1', aid: 'app-1', tv: 1, nonce: n }), refreshToken: 'r' };
+      useBridgeStore.setState({ tokens: t } as never);
+      return t;
+    };
+    start(jwt({ sub: 'user-1', tid: 'ws-1', aid: 'app-1', tv: 1, nonce: 0 }));
+    for (let i = 0; i < 10; i++) {
+      open(); // every reauthorize "reconnects" at once
+      await settle();
+    }
+    expect(reauthorizes).toBe(3); // MAX_RECONCILE_SWAPS, then it stops swapping
+  });
+
+  it('with setOnSubscribed, the catch-up waits for every channel, not the first ack', async () => {
+    start(tokenAt(1));
+    openHook?.(); // the first channel acked: 'open', the user channel still pending
+    await settle();
+    expect(refreshes).toBe(0);
+    expect(calls).toEqual([]);
+    subscribedHook?.(); // …and now every channel is live
+    await settle();
+    expect(refreshes).toBe(1);
+    expect(calls.map((c) => c.path).sort()).toEqual(['/billing/state', '/session/init']);
+  });
+});
+
+// TBP-762 — right after a checkout Bridge marks the sign-in out of date, and the
+// catch-up's billing read answered 401 TOKEN_VERSION_STALE and applied nothing.
+describe('the billing catch-up renews an out-of-date sign-in (TBP-762)', () => {
+  it('a TOKEN_VERSION_STALE answer is retried once with a freshly minted token', async () => {
+    const FRESH = jwt({ sub: 'user-1', tid: 'ws-1', aid: 'app-1', plan: 'pro', tv: 2 });
+    refreshResult = () => ({ accessToken: FRESH, refreshToken: 'r' });
+    start(TOKEN_A);
+    billingResponses.length = 0; // replace start()'s agreeing FREE
+    billingResponses.push(respondWith(401, { code: 'TOKEN_VERSION_STALE' }));
+    billingResponses.push(respondWith(200, PRO));
+    open();
+    await settle();
+    expect(billingFetches).toEqual([`Bearer ${TOKEN_A}`, `Bearer ${FRESH}`]);
+    expect(billingPlan()).toBe('pro');
+    expect(refreshOptions).toContainEqual({ fresh: true });
   });
 });

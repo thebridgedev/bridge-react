@@ -97,13 +97,22 @@ let refreshCalls = 0;
 let refreshPlan: Array<() => Promise<unknown>> = [];
 const spies: Array<{ mockRestore(): void }> = [];
 
+/**
+ * Bumped after every test: a refresh still sleeping when its test ended must
+ * not land in whatever test file runs next (the token store is shared).
+ */
+let testGeneration = 0;
+
 /** The server mints `token`; it lands `ms` after the refresh starts. */
 function landsAfter(ms: number, token: string = PRO): () => Promise<unknown> {
-  return () =>
-    sleep(ms).then(() => {
+  return () => {
+    const generation = testGeneration;
+    return sleep(ms).then(() => {
+      if (generation !== testGeneration) return null;
       setToken(token);
       return { accessToken: token };
     });
+  };
 }
 
 function start(seed: string | null = FREE): void {
@@ -152,6 +161,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  testGeneration += 1;
   cleanup();
   for (const spy of spies.splice(0)) spy.mockRestore();
   setBridgeFlagsInstance(undefined);
