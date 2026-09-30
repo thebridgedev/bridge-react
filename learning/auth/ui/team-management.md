@@ -12,6 +12,7 @@ A drop-in panel for managing team members, team profile, and workspace settings.
 | `showProfileTab` | `boolean` | `true` | Show the profile tab |
 | `showWorkspaceTab` | `boolean` | `true` | Show the workspace tab |
 | `onError` | `(error: Error) => void` | (none) | Called on any error |
+| `seatsMetric` | `string` | (none) | The plan limit that counts seats (e.g. `'seats'`). With it, inviting stops at the plan's limit |
 | `tabBar` | `({ tabs, activeTab, setTab }) => ReactNode` | (none) | Custom tab bar render prop |
 
 **Usage:**
@@ -73,3 +74,21 @@ import { TeamProfileForm, TeamUserList, TeamWorkspaceForm } from '@nebulr-group/
 ```
 
 All three accept `className`, `style`, and `onError` props.
+
+## Seat limits
+
+Seats are a plan limit you name, counted by Bridge from membership (active members plus pending invites):
+
+```bash
+bridge plan quota set <plan> --metric seats --limit N --policy hard --kind gauge --source membership
+```
+
+Pass the metric name to the team page and it enforces the limit: **Add Member** is disabled at the plan's limit with a line saying why and an upgrade link (`billing.manageRoute`, default `/billing`), an invite of more addresses than seats left is refused before anything is sent, and the seat count is re-read after an invite, a removal or an enable/disable.
+
+```tsx
+<TeamManagementPanel seatsMetric="seats" />
+// or
+<TeamUserList seatsMetric="seats" />
+```
+
+Without `seatsMetric` the page reads no quota and never gates. A metered seat limit (extra seats billed) is never refused here.

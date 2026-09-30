@@ -1,19 +1,28 @@
 import type { TeamUser } from '@nebulr-group/bridge-auth-core';
 import type { HTMLAttributes } from 'react';
 import { useEffect, useState } from 'react';
-import { getBridgeAuth } from '../../core/bridge-instance';
+import { getBridgeAuth, getBridgeConfig } from '../../core/bridge-instance';
 import { Alert } from '../sdk-auth/shared/Alert';
 import { Spinner } from '../sdk-auth/shared/Spinner';
 import { TeamAddUserDialog } from './TeamAddUserDialog';
 import { TeamConfirmDialog } from './TeamConfirmDialog';
 import { TeamEditUserDialog } from './TeamEditUserDialog';
 import { TeamUserActionsMenu } from './TeamUserActionsMenu';
+import { seatsChanged, seatsLeftOf, useSeatsQuota } from './seats';
 
 interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'onError'> {
   onError?: (error: Error) => void;
+  /**
+   * TBP-763 — the plan limit that counts seats (e.g. `'seats'`, set up as a
+   * gauge Bridge counts from membership). With it, Add Member stops at the
+   * plan's limit with a line saying why, an invite of more addresses than
+   * seats left is refused, and an invite, removal or enable/disable re-reads
+   * the seat count. Without it the page reads no quota and never gates.
+   */
+  seatsMetric?: string;
 }
 
-export function TeamUserList({ onError, className, style, ...rest }: Props) {
+export function TeamUserList({ onError, seatsMetric, className, style, ...rest }: Props) {
   const [users, setUsers] = useState<TeamUser[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +36,11 @@ export function TeamUserList({ onError, className, style, ...rest }: Props) {
   const [deletingUser, setDeletingUser] = useState<TeamUser | null>(null);
   const [resettingUser, setResettingUser] = useState<TeamUser | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // TBP-763 — the seat count, only when the page counts seats.
+  const seatsQuota = useSeatsQuota(seatsMetric);
+  const seatsLeft = seatsMetric ? seatsLeftOf(seatsQuota) : null;
+  const seatsFull = seatsLeft === 0;
 
   useEffect(() => {
     let mounted = true;
@@ -61,6 +75,7 @@ export function TeamUserList({ onError, className, style, ...rest }: Props) {
       const bridge = getBridgeAuth();
       await bridge.team.deleteUser(deletingUser.id);
       setUsers((prev) => prev.filter((u) => u.id !== deletingUser.id));
+      seatsChanged(seatsMetric);
       setShowDeleteConfirm(false);
       setDeletingUser(null);
     } catch (err) {
@@ -96,10 +111,20 @@ export function TeamUserList({ onError, className, style, ...rest }: Props) {
             type="button"
             className="bridge-btn bridge-btn-primary"
             onClick={() => setShowAddDialog(true)}
+            disabled={seatsFull}
           >
             Add Member
           </button>
         </div>
+
+        {seatsFull && seatsQuota && (
+          <p className="bridge-team-seats-full" data-bridge-seats-full={seatsMetric}>
+            All {seatsQuota.limit.toLocaleString()} seats on your plan are taken
+            {seatsQuota.source === 'membership' ? ' (pending invites count)' : ''}.{' '}
+            <a href={getBridgeConfig()?.billing?.manageRoute ?? '/billing'}>Upgrade</a> to invite more
+            people.
+          </p>
+        )}
 
         {loading ? (
           <div className="bridge-team-loading">
@@ -115,6 +140,7 @@ export function TeamUserList({ onError, className, style, ...rest }: Props) {
               type="button"
               className="bridge-btn bridge-btn-primary"
               onClick={() => setShowAddDialog(true)}
+              disabled={seatsFull}
             >
               Add your first team member
             </button>
@@ -179,7 +205,11 @@ export function TeamUserList({ onError, className, style, ...rest }: Props) {
       <TeamAddUserDialog
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}
-        onAdded={(added) => setUsers((prev) => [...prev, ...added])}
+        onAdded={(added) => {
+          setUsers((prev) => [...prev, ...added]);
+          seatsChanged(seatsMetric);
+        }}
+        seatsLeft={seatsLeft}
       />
 
       <TeamEditUserDialog
@@ -190,9 +220,11 @@ export function TeamUserList({ onError, className, style, ...rest }: Props) {
           setShowEditDialog(false);
           setEditingUser(null);
         }}
-        onUpdated={(updated) =>
-          setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
-        }
+        onUpdated={(updated) => {
+          setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+          // Enabling or disabling someone moves the seat count.
+          seatsChanged(seatsMetric);
+        }}
       />
 
       <TeamConfirmDialog

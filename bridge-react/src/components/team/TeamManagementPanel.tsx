@@ -11,6 +11,12 @@ interface Props extends Omit<HTMLAttributes<HTMLDivElement>, 'onError'> {
   showProfileTab?: boolean;
   showWorkspaceTab?: boolean;
   onError?: (error: Error) => void;
+  /**
+   * TBP-763 — the plan limit that counts seats (e.g. `'seats'`, a gauge
+   * counted from membership). Passed to the users tab: Add Member stops at the
+   * plan's limit. See `TeamUserList`.
+   */
+  seatsMetric?: string;
   tabBar?: (ctx: { tabs: Tab[]; activeTab: string; setTab: (id: string) => void }) => ReactNode;
 }
 
@@ -19,6 +25,7 @@ export function TeamManagementPanel({
   showProfileTab = true,
   showWorkspaceTab = true,
   onError,
+  seatsMetric,
   tabBar,
   className,
   style,
@@ -57,7 +64,7 @@ export function TeamManagementPanel({
       ) : null}
 
       <div className="bridge-team-tab-content">
-        {activeTab === 'users' && <TeamUserList onError={onError} />}
+        {activeTab === 'users' && <TeamUserList onError={onError} seatsMetric={seatsMetric} />}
         {activeTab === 'profile' && <TeamProfileForm onError={onError} />}
         {activeTab === 'workspace' && <TeamWorkspaceForm onError={onError} />}
       </div>
