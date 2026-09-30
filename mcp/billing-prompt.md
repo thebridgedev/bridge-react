@@ -4,7 +4,13 @@ You are wiring **billing UI** into a React (Vite / CRA) application that uses Th
 
 > **STOP — do not install any packages.** The only dependency is `@nebulr-group/bridge-react`, which is already installed. Do NOT install `@stripe/stripe-js` — the SDK redirects to Stripe Checkout via a plain URL redirect, no Stripe client library needed.
 
-The whole billing surface ships from the **main entry** `@nebulr-group/bridge-react` — there is no `/billing` subpath (only `.`, `/flags`, and `/styles` exist). Snippets below import from the main entry to match the demo app.
+The billing surface ships from the **main entry** `@nebulr-group/bridge-react`. The only other entries are `/flags`, `/styles`, and the router adapters `/react-router` and `/tanstack-router` (which export `BridgeBillingRoutes` bound to that router). There is no `/billing` subpath.
+
+**The rules this guide follows** (full version: `learning/mechanisms.md`):
+
+- One route serves every subscription page. Do not hand-write a subscription, success, cancel, `/billing` or `/payment-error` page.
+- Count usage once, where the action happens: a backend that does the work counts it (`@RequireQuota`); the browser counts only what never reaches a server (`bridge.usage`).
+- Do not write a quota `if`, a "limit reached" toast or a `/quota` endpoint: level 0 (the upgrade dialog on a `402`) already covers the refusal.
 
 ## Decide first — which billing surface do you need?
 
@@ -12,15 +18,14 @@ Billing is not one component. Pick the rows that match what the app has to do; m
 
 | You want | Use | What it does |
 |---|---|---|
-| **The app unusable until the workspace has a plan** | `<BridgePaywall>` wrapping the app | Hard gate — renders a fullscreen `<PlanSelector>` while the session reports `shouldSelectPlan`, children only once a plan is active |
-| A page where users pick or change a plan | `<PlanSelector>` on your own route | Loads plans, marks the current one, free plan selects directly, paid plan launches Stripe Checkout |
+| **The subscription page, the paywall and the checkout return pages** | `<BridgeBillingRoutes />` on `/subscription/*` | Serves `/subscription` (current plan, Manage billing, plan picker), `/subscription/plan` (paywall), `/subscription/success`, `/subscription/error` |
+| **The app unusable until the workspace has a plan** | Nothing more | With plans, `<BridgeProvider>` redirects a plan-less workspace to `/subscription/plan` before the app renders |
 | To warn about payment failures, trials, cancellation | `<BridgeBillingNotice />` in the root layout | Renders nothing while billing is healthy; picks the right message and CTA per lifecycle state |
-| To show the current plan and status | `<BridgeSubscriptionStatus />` | Ready-made plan name + status badge |
-| A live usage counter against a quota | `<BridgeQuotaBanner metric="…" />` | Silent below 80% of the cap, warning at 80–94%, critical at ≥95%, ticks live |
-| A "Manage billing" button (payment method, invoices, cancel) | `getBridgeAuth().getBillingPortalUrl()`, gated on `canManageBilling()` | Returns a one-time Stripe portal URL to redirect to — call it at click time, do not cache |
-| To hide a feature the plan didn't buy | `bridge.tenant.entitlements` via `useBridgeReadable` (or `.can(key)` outside a component) | Entitlement read that fails closed and moves live on a plan change |
-
-**Two of these look interchangeable and are not.** If the requirement is "a user cannot use the app without a plan", a `<PlanSelector>` page does not deliver it — a page is something the user can navigate away from. `<BridgePaywall>` (or `billing.paywallRoute` on `<BridgeProvider>`) is the gate; the plan page is where they change plans afterwards. Shipping only the page means planless workspaces walk straight into the app.
+| The upgrade path when a plan limit is hit | Nothing (level 0) | Your backend's `402 QUOTA_EXCEEDED` opens the upgrade dialog `<BridgeProvider>` mounts |
+| A button that stops at the limit | `<QuotaGate metric="…">` (level 1) | Disables the controls inside at a known hard cap, with an upgrade line |
+| Your own quota UI | `useQuota(metric)` (level 2) | Live `{ loading, unlimited, used, limit, remaining, warningLevel, kind }` |
+| A live usage warning banner | `<BridgeQuotaBanner metric="…" />` | Silent below 80% of the cap, warning at 80–94%, critical at ≥95% |
+| To hide a feature the plan didn't buy | `<FeatureFlag flagKey="…" defaultValue={false} upgrade>` with the flag ruled `bridge:billing.entitlement.<key> eq true` | Shows the feature on plans that include it, an "Upgrade to use this" button elsewhere |
 
 And **entitlements are not feature flags.** Entitlements describe what the workspace *bought*; flags describe what you have *exposed*. Gating a paid feature with a flag leaves it on for everyone the moment the flag flips.
 
@@ -43,38 +48,41 @@ bridge stripe status
 - Bridge must be set up in this project:
   - `@nebulr-group/bridge-react` in `package.json`
   - `<BridgeProvider>` mounts at the root of the app (see the auth/flags guides)
-  - `VITE_BRIDGE_APP_ID` (Vite) or `REACT_APP_BRIDGE_APP_ID` (CRA) set, or `appId` passed to `<BridgeProvider>`
+  - `VITE_BRIDGE_APP_ID` (Vite) or `REACT_APP_BRIDGE_APP_ID` (CRA) set, or `appId` passed to `<BridgeProvider config>` (an explicit option wins over the environment)
 
-## Step 1 — Subscription page
-
-Create `src/pages/SubscriptionPage.tsx` (or wherever your routes live):
+## Step 1 — Mount the subscription pages
 
 ```tsx
-import { PlanSelector } from '@nebulr-group/bridge-react';
+// src/App.tsx — React Router
+import { BridgeBillingRoutes } from '@nebulr-group/bridge-react/react-router';
 
-export default function SubscriptionPage() {
-  return (
-    <div>
-      <h1>Choose a plan</h1>
-      <PlanSelector />
-    </div>
-  );
-}
+<Routes>
+  {/* …your routes */}
+  <Route path="/subscription/*" element={<BridgeBillingRoutes />} />
+</Routes>
 ```
 
-`<PlanSelector>` handles everything: loads plans, shows the current plan, routes free-plan selection directly (`selectFreePlan`), and launches Stripe Checkout for paid plans (`startCheckout` → redirect to the returned `checkoutUrl`). After payment or cancellation, Stripe returns through Bridge's unified callback handler, which syncs billing state and redirects the user. No redirect pages or URL configuration needed.
+```tsx
+// TanStack Router
+import { BridgeBillingRoutes } from '@nebulr-group/bridge-react/tanstack-router';
 
-**`<PlanSelector>` props:**
+const subscriptionRoute = createRoute({ getParentRoute: () => rootRoute, path: 'subscription/$', component: BridgeBillingRoutes });
+```
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `successRedirect` | `string` | `/subscription` | Where to send the user after a successful payment |
-| `cancelRedirect` | `string` | `/subscription` | Where to send the user after a cancelled payment |
-| `onSelect` | `(detail: { plan, price }) => void` | — | Called after free-plan selection or a plan change |
-| `planCard` | `(ctx) => ReactNode` | — | Render-prop override for the default plan card |
-| `emptyState` / `loadingState` | `ReactNode` | — | Override the empty / loading UI |
+Without a router: `<BridgeBillingRoutes base="/subscription" />` from the main entry.
 
-**Paywall (post-signup):** to drop the user straight into the app after first payment, set `successRedirect="/"`. The subscription syncs automatically on whichever page they land on.
+That one route is the whole subscription surface:
+
+| Address | Page | Config default it serves |
+|---|---|---|
+| `/subscription` | Current plan, "Manage billing" (`<BillingPortalButton>`), plan picker | `billing.manageRoute` |
+| `/subscription/plan` | The paywall | `billing.paywallRoute` |
+| `/subscription/success` | Where a checkout or a free pick lands | `<manageRoute>/success` |
+| `/subscription/error` | Where a failed checkout confirmation lands | `billing.paymentErrorRoute` |
+
+The plan picker loads plans cheapest first, shows interval tabs and each plan's features, selects a free plan directly, confirms before an instant switch, and launches Stripe Checkout for a paid plan. Stripe returns through Bridge's callback (served by `<BridgeAuthRoutes>` on `/auth/*`), which confirms the checkout and lands on `/subscription/success`.
+
+To customise: `--bridge-*` tokens; then `frame(page, children)` / `heading(page)` on `<BridgeBillingRoutes>`; then take one page over by element, `pages={{ plan: <MyPricing /> }}`, building it from `<PlanSelector>` (render props `planCard`, `planDescription`, `planFooter`).
 
 ## Step 2 — Billing notice banner
 
@@ -93,84 +101,89 @@ It reads the Billing 2.0 lifecycle snapshot from auth-core's billing surface (`u
 | `chassis` | `'bar' \| 'rail' \| 'card'` | `'rail'` | Visual shell |
 | `mode` | `'soft' \| 'hard'` | `'soft'` | `hard` renders a full lockscreen for the locked state |
 | `onActionClick` | `(state) => void` | — | Override the default CTA click handler |
-| `actionHref` | `string` | — | CTA destination for this instance; falls back to `billing.manageRoute` config, then `/billing` |
+| `actionHref` | `string` | — | CTA destination for this instance; falls back to `billing.manageRoute` (default `/subscription`) |
 
-The CTA navigates to, in priority order: `onActionClick` → `actionHref` → `billing.manageRoute` config → `/billing`. Since this guide puts the plan page at `/subscription`, point the CTA there via the `<BridgeProvider>` config:
+The CTA navigates to, in priority order: `onActionClick` → `actionHref` → `billing.manageRoute` (default `/subscription`, the page Step 1 mounted). Nothing to configure.
 
-```tsx
-<BridgeProvider config={{ appId: '...', billing: { manageRoute: '/subscription' } }}>
-```
+## Step 2b — Plan-selection paywall (on by default)
 
-## Step 2b — Plan-selection paywall (default)
-
-Set this up by default: a signed-in tenant with no plan can't use the app until they pick one. Wrap your app in `<BridgePaywall>`:
-
-```tsx
-import { BridgePaywall } from '@nebulr-group/bridge-react';
-
-<BridgePaywall successRedirect="/">
-  <App />
-</BridgePaywall>
-```
-
-`<BridgePaywall>` renders a fullscreen plan-selector modal when the session reports `shouldSelectPlan` (and `paymentsAutoRedirect` is not `false`), then disappears once a plan is chosen. Otherwise it just renders its children. Props:
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `successRedirect` | `string` | `/` | Where to send the user after a successful Stripe payment |
-| `cancelRedirect` | `string` | `/` | Where to send the user if they cancel Stripe Checkout |
-| `onSelect` | `(detail: { plan, price }) => void` | — | Side-effect hook after free-plan or direct plan change |
-| `heading` | `ReactNode` | — | Override the default "Choose a plan" heading |
-
-The redirect is gated by the app-level `paymentsAutoRedirect` flag (**`true` by default**). To turn the whole paywall off so users reach the app without choosing a plan:
+Nothing to write. When the app has plans, `<BridgeProvider>` sends a signed-in workspace with no plan to `/subscription/plan` before the app renders, and lets it through once a plan is active. The redirect respects the app-level `paymentsAutoRedirect` flag (**`true` by default**):
 
 ```bash
-bridge app update --payments-auto-redirect false
+bridge app update --payments-auto-redirect false   # turn the paywall off for the app
 ```
 
-**Alternative — dedicated welcome route.** If you'd rather redirect to a route than overlay in place, set `billing.paywallRoute` on `<BridgeProvider config={...}>` (e.g. `billing: { paywallRoute: '/welcome' }`) and render a `<PlanSelector>` on that route. The provider redirects planless users there before the app renders.
+Variations, only when the user asks for them:
 
-## Step 3 — Quota and entitlement UI (optional)
+- **An onboarding page of your own** (e.g. `/welcome`): a product decision — ask, never create it unasked. If yes, render `<BridgePaywallPage heading="…" />` on that route and set `billing: { paywallRoute: '/welcome' }` on `<BridgeProvider config>`.
+- **A modal instead of a redirect:** wrap the app in `<BridgePaywall>` and set `billing: { paywallRoute: false }`.
+
+## Step 3 — Plan limits in the UI (optional)
 
 Skip if the plans have no per-resource limits or feature differences.
 
-> Quotas and entitlements were configured in the master prompt (or the Bridge admin → **Plans**) via `bridge plan quota set` and `bridge plan entitlement set`. This step only surfaces them.
+> Quotas and plan features were configured in the master prompt (or the Bridge admin → **Plans**) via `bridge plan quota set` and `bridge plan feature add`. This step only surfaces them.
 
-To show a live quota counter, drop in `<BridgeQuotaBanner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridgeBilling().quota(metric)` and ticks live as usage is reported, no polling. Props: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; falls back to `billing.manageRoute` config, then `/billing`).
+Pick the lowest level that does the job:
 
-To gate a feature by entitlement, read `bridge.tenant.entitlements.snapshot` through `useBridgeReadable` so the component re-renders when the plan changes:
+**Level 0 — nothing.** Call your backend with `bridgeFetch` (it adds the user's token). When the backend refuses at the cap (`402 { code: 'QUOTA_EXCEEDED', metric, used, limit, fix }`, what bridge-nestjs `@RequireQuota` sends), `<BridgeProvider>` opens an upgrade dialog naming the metric; a member who cannot manage billing is told to ask the owner. A plain `fetch` to the page's own origin is recognised too; another origin goes in `billing.apiOrigins`. `billing.upgradeDialog: false` turns it off (use `onBridgeQuotaExceeded(handler)`), a component replaces it.
 
 ```tsx
-import { bridge, useBridgeReadable } from '@nebulr-group/bridge-react';
+import { bridgeFetch } from '@nebulr-group/bridge-react';
 
-export function AnalyticsLink() {
-  const entitlements = useBridgeReadable(bridge.tenant.entitlements.snapshot);
-  if (!entitlements?.advanced_analytics) return null;
-  return <a href="/analytics">Open advanced analytics</a>;
-}
+<button onClick={() => bridgeFetch('/api/tickets', { method: 'POST' })}>New ticket</button>
 ```
 
-The snapshot is `null` until the first session snapshot arrives, so the check fails closed, and it is replaced live when the plan changes or a `hard` quota exhausts. Outside a component (an event handler, a plain module), `bridge.tenant.entitlements.can('advanced_analytics')` gives the same answer as a one-off read.
+**Level 1 — one component.**
 
-> **Note:** two different functions share the name. `useBridge()` from `@nebulr-group/bridge-react` returns the `bridge` object above (`bridge.tenant.*`, `bridge.user`, …) and has no `quota()`, `entitlements` or `subscription` of its own. auth-core's billing surface, which the quota banner and billing notice read, is re-exported as `useBridgeBilling()`. Use `useBridgeBilling().quota(metric)` for a raw quota read.
+```tsx
+import { QuotaGate, FeatureFlag } from '@nebulr-group/bridge-react';
 
-## Step 4 — Reporting usage
+<QuotaGate metric="tickets">
+  <button onClick={createTicket}>New ticket</button>
+</QuotaGate>
 
-To make quota counters tick, report usage from your code. Fire-and-forget; the SDK queues durably:
+{/* the flag's rule: bridge:billing.entitlement.analytics eq true */}
+<FeatureFlag flagKey="analytics" defaultValue={false} upgrade>
+  <a href="/analytics">Analytics</a>
+</FeatureFlag>
+```
+
+`<QuotaGate>` never disables while loading, on an unlimited metric or on a metered quota; `atLimit={(q) => …}` replaces its default upgrade line. `upgrade` on `<FeatureFlag>` shows an "Upgrade to use this" button only when the plan is why the feature is off.
+
+**Level 2 — your own UI.**
+
+```tsx
+import { useQuota } from '@nebulr-group/bridge-react';
+
+const tickets = useQuota('tickets');
+// tickets.loading → numbers are null (never 0); tickets.unlimited → no quota on this plan
+// otherwise tickets.used / tickets.limit / tickets.remaining, live
+```
+
+`<BridgeQuotaBanner metric="…" />` is a ready-made warning banner on top of the same data (silent below 80%).
+
+Checking the plan directly without a flag — `<Entitled to="analytics">` or `useEntitlements().can('analytics')` — is the exception, for when the user explicitly wants no flag; it prints a one-time note in development.
+
+## Step 4 — Counting usage
+
+**Count once, where the action happens.** When the click calls your backend, the backend handler counts it (`@RequireQuota` / `@SyncQuota`) and the page reports nothing. Only when the action never reaches a server of yours (local-first, data on the device) does the browser count it:
 
 ```ts
-import { getBridgeAuth } from '@nebulr-group/bridge-react';
+import { bridge } from '@nebulr-group/bridge-react';
 
-getBridgeAuth().usage.report('ai_completions', 1); // value defaults to 1
+bridge.usage.report('exports');                        // a counter: it happened
+await bridge.usage.set('projects', projects.length);   // a gauge: how many exist now
 ```
 
-Reporting to a metric not configured in the admin is accepted server-side but ticks no counter. Exceeding the cap always succeeds — the reaction is downstream (`metered` bills overage, `hard` flips the entitlement off).
+Never both for one metric. In development the plugin warns once when the backend and the page count the same metric.
 
 ## Reading subscription state
 
 Two reads, depending on the call site:
 
 - `useBridgeReadable(bridge.tenant.subscription)` returns the canonical plan and status (`{ plan: { slug, name }, status, endsAt }`, `null` until the first session snapshot). It moves live on a plan change. Good for plan name / "is there a plan" checks.
+- `useQuota(metric)` / `useEntitlements()` for plan limits and plan features (Step 3).
 - `useSubscription()` returns the checkout-flow status shape (`{ status, plans, loading, error }`) from the Zustand store. Call `loadSubscription()` to populate it; it is what `<PlanSelector>` uses.
 - `useBridgeBilling().subscription` is auth-core's Billing 2.0 lifecycle store (`status`, `daysLeft`, `gateEngaged`, `recoveryUrl`, …) behind the billing notice. `<BridgeSubscriptionStatus />` is the ready-made display component for plan name + status badge.
 
@@ -190,22 +203,23 @@ Plans, prices, quotas, and entitlements are configured at **app.thebridge.dev** 
 Before verifying, confirm every item was applied:
 
 - [ ] `bridge plan list` returns at least one plan
-- [ ] `SubscriptionPage` created with `<PlanSelector>` (no props needed for the standard plan-change flow)
+- [ ] `<Route path="/subscription/*" element={<BridgeBillingRoutes />} />` (or the TanStack `subscription/$` route) mounted, and `/auth/*` → `<BridgeAuthRoutes />` mounted (the Stripe return comes back through it)
+- [ ] No hand-written subscription, success, cancel, `/billing` or `/payment-error` page
 - [ ] `<BridgeBillingNotice />` added to the root layout
-- [ ] `billing: { manageRoute: '/subscription' }` set on `<BridgeProvider config>` so banner CTAs land on the plan page
-- [ ] Paywall: `<BridgePaywall>` wrapping the app (or `billing.paywallRoute` set on `<BridgeProvider>`)
-- [ ] Quota/entitlement UI added if plans have limits
+- [ ] No quota `if`, "limit reached" toast or `/quota` endpoint of your own
+- [ ] Usage counted once: by the backend handler, or by `bridge.usage` only for browser-only actions
 - [ ] No extra packages installed (`@stripe/stripe-js` must NOT be in package.json)
 
 ## Verify
 
-1. Navigate to the subscription page — plan cards render with correct prices; a tier with monthly + yearly pricing shows both intervals.
-2. Select a free plan — subscription updates immediately, no redirect.
+1. Open `/subscription` — plan cards render cheapest first; a tier with monthly + yearly pricing shows interval tabs.
+2. Select a free plan — the plan changes and you land on `/subscription/success`.
 3. Select a paid plan — Stripe Checkout launches.
-4. Complete payment — redirected back with the updated plan showing.
-5. Cancel payment — redirected to the cancel target.
-6. Paywall: sign in as a new tenant with no plan — the paywall modal blocks the app until a plan is chosen.
-7. Run the project's build command — no TypeScript or import errors.
+4. Complete payment — you land on `/subscription/success` with the new plan showing.
+5. Cancel payment — you are back on the page you picked from.
+6. Paywall: sign in as a new workspace with no plan — you are sent to `/subscription/plan` before the app renders.
+7. With a backend `@RequireQuota`: hit the cap — the upgrade dialog names the metric.
+8. Run the project's build command — no TypeScript or import errors.
 
 ---
 

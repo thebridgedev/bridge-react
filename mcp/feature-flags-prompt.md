@@ -57,7 +57,7 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-`<BridgeProvider>` reads its `appId` from `VITE_BRIDGE_APP_ID` / `REACT_APP_BRIDGE_APP_ID`; you can also pass it as a prop (`<BridgeProvider appId="…">`) — the env var wins if both are present. Init runs **synchronously during the provider's first render**, not in an effect, so any descendant may read a flag immediately.
+`<BridgeProvider>` reads its `appId` from `VITE_BRIDGE_APP_ID` / `REACT_APP_BRIDGE_APP_ID`; you can also pass it as a prop (`<BridgeProvider appId="…">`) — an explicit prop wins over the environment. Init runs **synchronously during the provider's first render**, not in an effect, so any descendant may read a flag immediately.
 
 Flags start evaluating for all visitors as soon as `<BridgeProvider>` mounts — login is not required.
 
@@ -227,7 +227,7 @@ For anything this prompt doesn't cover — the imperative `flagStore` for non-co
 
 Flag not appearing in the dashboard within ~30s, or a read returns the default forever:
 
-- **`<BridgeProvider>` mounted and `appId` resolved.** The flag layer bootstraps inside the provider's first render; with no `appId` the provider logs `[BridgeProvider] No appId provided` and inits nothing. Confirm `VITE_BRIDGE_APP_ID` / `REACT_APP_BRIDGE_APP_ID`, or the `appId` prop.
+- **`<BridgeProvider>` mounted and `appId` resolved.** The flag layer bootstraps inside the provider's first render; with no app id anywhere the provider logs `[bridge] No Bridge app id was found. Set VITE_BRIDGE_APP_ID…` and inits nothing. Confirm `VITE_BRIDGE_APP_ID` / `REACT_APP_BRIDGE_APP_ID`, or the `appId` prop.
 - **One provider, at the root, never unmounted.** Its unmount cleanup stops the flag bundle and the realtime runtime; init is guarded per provider instance, so a torn-down provider does not come back.
 - **Read the flag inside a component.** `useFlag` / `<FeatureFlag>` are the reactive path. Calling `evaluateFlag` at module scope, before the provider has rendered, returns the default.
 - **A flag registers only once it has been evaluated** — render something that actually reads the key.

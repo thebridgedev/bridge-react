@@ -6,19 +6,20 @@ You are wiring authentication into a React application that uses The Bridge.
 
 | You want | Mode | What you build | Config |
 |---|---|---|---|
-| Bridge owns the login UI | **Hosted** (default) | Nothing — no login page at all | No `loginRoute` |
-| Login inside your app, your styling | **SDK auth** | Your own routes rendering `<LoginForm>` / `<SignupForm>` | Set `loginRoute` |
+| Bridge owns the login UI | **Hosted** (default) | One `/auth/*` route rendering `<BridgeAuthRoutes />` | No `loginRoute` |
+| Login inside your app, your styling | **SDK auth** | The same one `/auth/*` route | `loginRoute: '/auth/login'` |
 
 **One config field is the entire switch.** Adding `loginRoute` to `BridgeConfig` turns hosted mode off. If you are being redirected to a route you never built, that field is why.
 
 If the user has not said which they want, ask. This is not a detail to infer — a wrong guess means rewriting the auth pages.
 
-The rest of this guide covers **SDK auth**. For hosted, there is nothing to build beyond the callback route in `integration-prompt.md`.
+The rest of this guide covers **SDK auth**. For hosted, there is nothing to build beyond the `/auth/*` route in `integration-prompt.md`.
 
 ## The components — reach for these, do not hand-roll
 
 | Need | Component |
 |---|---|
+| Every sign-in page (login, signup, OAuth callback, set-password, forgot-password, magic-link, setup-passkey, workspaces) | `<BridgeAuthRoutes>` on `/auth/*` |
 | Sign in | `<LoginForm>` |
 | Sign up | `<SignupForm>` |
 | Forgot password | Built into `<LoginForm>` |
@@ -38,7 +39,7 @@ The rest of this guide covers **SDK auth**. For hosted, there is nothing to buil
 1. `@nebulr-group/bridge-react` installed.
 2. `<BridgeProvider>` mounted above the router (see `integration-prompt.md`).
 3. `VITE_BRIDGE_APP_ID` set.
-4. A router adapter registered via `setRouterAdapter`.
+4. React Router 6.4+/7 or TanStack Router 1 (optional peers), or no router at all.
 
 If any are missing, run the integration guide first.
 
@@ -54,54 +55,50 @@ import '@nebulr-group/bridge-react/styles';
 ## Step 2 — Point the config at your login route
 
 ```tsx
-const config: BridgeConfig = {
-  appId: import.meta.env.VITE_BRIDGE_APP_ID,
-  loginRoute: '/auth/login',
-};
+// src/main.tsx
+<BridgeProvider config={{ loginRoute: '/auth/login' }}>
+  <BrowserRouter><App /></BrowserRouter>
+</BridgeProvider>
 ```
 
-## Step 3 — Build the auth pages
+The app id comes from `VITE_BRIDGE_APP_ID`; an option you pass explicitly wins over the environment.
+
+## Step 3 — One route serves every auth page
 
 ```tsx
-// src/pages/LoginPage.tsx
-import { LoginForm } from '@nebulr-group/bridge-react';
+// src/App.tsx — React Router
+import { ProtectedRoute } from '@nebulr-group/bridge-react';
+import { BridgeAuthRoutes } from '@nebulr-group/bridge-react/react-router';
 
-export default function LoginPage() {
-  return <LoginForm showSignupLink />;
-}
+<Routes>
+  <Route path="/auth/*" element={<BridgeAuthRoutes />} />
+  <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+</Routes>
 ```
 
 ```tsx
-// src/pages/SignupPage.tsx
-import { SignupForm } from '@nebulr-group/bridge-react';
+// TanStack Router
+import { BridgeAuthRoutes } from '@nebulr-group/bridge-react/tanstack-router';
 
-export default function SignupPage() {
-  return <SignupForm showLoginLink loginHref="/auth/login" />;
-}
+const authRoute = createRoute({ getParentRoute: () => rootRoute, path: 'auth/$', component: BridgeAuthRoutes });
 ```
 
-Optional props on both: `onLogin` (fires after successful auth — analytics, a post-login redirect) and `onError`.
+Without a router: `<BridgeAuthRoutes base="/auth" />` from the main entry.
+
+**Do not hand-write `/auth/login`, `/auth/signup`, `/auth/set-password/:token` or any other auth page.** The set-password page is where every signup verification email lands; a forgotten one sends every new signup to a 404. `<BridgeAuthRoutes>` owns the list.
+
+Customise in rungs, climbing only as far as needed:
+
+1. `--bridge-*` CSS tokens (colours, radius, spacing).
+2. `frame={(page, children) => …}` replaces everything around the form on every page; `heading={(page) => …}` replaces each page's main heading.
+3. Take one page over by element: `<BridgeAuthRoutes pages={{ login: <MyLoginPage /> }} />`. A login page you own calls `navigate(readReturnTo(location.search) ?? '/')` in `<LoginForm onLogin>`.
+4. Headless: `getBridgeAuth()`.
 
 ## Step 4 — Guard routes
 
-**bridge-react has no declarative `routeConfig`.** Unlike bridge-svelte, you decide which routes are public in your router, with `useAuth()` supplying reactive state:
+Wrap routes that need a signed-in user in `<ProtectedRoute>`. It shows a loading state until auth resolves, then renders its children or sends the visitor to `loginRoute` (or the hosted login), remembering where they were going. It is the same component in both modes.
 
-```tsx
-import { useAuth } from '@nebulr-group/bridge-react';
-import { Navigate } from 'react-router-dom';
-
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
-  // Render nothing while auth resolves — returning the redirect here would
-  // bounce a signed-in user to login on every refresh.
-  if (isLoading) return null;
-  return isAuthenticated ? <>{children}</> : <Navigate to="/auth/login" replace />;
-}
-```
-
-That `isLoading` check is the one people leave out, and it produces a bug that only shows on a hard refresh.
-
-For hosted mode use the shipped `<ProtectedRoute>` instead — it handles the loading state and starts the hosted flow.
+bridge-react has no declarative `routeConfig`: you decide which routes are public in your router. For a guard of your own, use `useAuth()` and keep the `isLoading` branch — returning a redirect while auth resolves bounces a signed-in user to login on every refresh.
 
 ## Reading the user
 
@@ -115,6 +112,7 @@ For profile fields use `useProfile()`. For the raw token (to call your own backe
 
 ## Common mistakes
 
+- **Hand-writing auth pages** instead of mounting `<BridgeAuthRoutes>` on `/auth/*` — the page you forget (usually set-password) is a 404 in every verification email.
 - **Hand-rolling a password form** instead of `<LoginForm>` — loses magic link, passkeys, MFA and workspace selection, all of which are configured server-side and cannot be replicated from the client.
 - **Forgetting `import '@nebulr-group/bridge-react/styles'`** — components look broken.
 - **Omitting the `isLoading` branch** in a guard — signed-in users get bounced to login on refresh.
@@ -127,6 +125,6 @@ Which methods appear (password, magic link, passkeys, SSO, MFA) is **app configu
 
 ## Related guides
 
-- `integration-prompt.md` — provider, router adapter, callback route
+- `integration-prompt.md` — provider, environment, the `/auth/*` route
 - `feature-flags-prompt.md` — gating on flags
 - `team-prompt.md` — team management UI

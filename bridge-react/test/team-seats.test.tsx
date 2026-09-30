@@ -81,7 +81,7 @@ describe('the team page with seatsMetric (TBP-763)', () => {
     expect(addButton(container).disabled).toBe(true);
     const line = container.querySelector('[data-bridge-seats-full="seats"]');
     expect(line?.textContent).toContain('All 2 seats on your plan are taken (pending invites count)');
-    expect(line?.querySelector('a')?.getAttribute('href')).toBe('/billing');
+    expect(line?.querySelector('a')?.getAttribute('href')).toBe('/subscription') // TBP-743: the default manageRoute;
   });
 
   it('a live seat count that frees a seat enables Add Member again', async () => {

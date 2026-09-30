@@ -144,10 +144,21 @@ describe('child errors reach LoginForm (TBP-669)', () => {
 
   it('a passkey sign-in refused at the token exchange shows the fix instead of the spinner', async () => {
     failWith('authenticateWithPasskey', 'credentials-validated', plainRefusal());
-    const { container, getByText } = render(<LoginForm showPasskeys />);
-    fireEvent.click(getByText(en['passkey.loginButton']));
-    await waitFor(() => expect(alertText(container)).toBe(FIX));
-    expect(settling(container)).toBeNull();
+    // TBP-743 — the button runs a real ceremony now: a browser that supports
+    // passkeys, Bridge's options, and an authenticator that answers.
+    const w = window as unknown as Record<string, unknown>;
+    w.PublicKeyCredential = function PublicKeyCredential() {};
+    w.__simpleWebAuthn = { startAuthentication: async () => ({ id: 'cred' }), startRegistration: async () => ({}) };
+    (getBridgeAuth() as any).getPasskeyAuthOptions = async () => ({ challenge: 'c' });
+    try {
+      const { container, getByText } = render(<LoginForm showPasskeys />);
+      fireEvent.click(getByText(en['passkey.loginButton']));
+      await waitFor(() => expect(alertText(container)).toBe(FIX));
+      expect(settling(container)).toBeNull();
+    } finally {
+      delete w.PublicKeyCredential;
+      delete w.__simpleWebAuthn;
+    }
   });
 
   it('other MFA errors stay with MFA', async () => {

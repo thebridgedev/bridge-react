@@ -8,25 +8,29 @@ The fastest way to add authentication to your React app. Bridge handles the enti
 npm i @nebulr-group/bridge-react
 ```
 
-## 2. Configuration (`src/main.tsx`)
+## 2. Configuration (`.env` and `src/main.tsx`)
 
-Initialize Bridge by wrapping your app in `<BridgeProvider>` at the root. For hosted auth, you only need `appId`. No `loginRoute` is needed because Bridge redirects unauthenticated users to the hosted login page automatically.
+Put your app id in `.env`. For a stage or local app, add its API address too; the hosted login address follows it on Bridge's own domains (`api-stage` → `auth-stage`).
+
+```env
+VITE_BRIDGE_APP_ID=your-app-id-here
+# VITE_BRIDGE_API_BASE_URL=https://api-stage.thebridge.dev
+```
+
+Wrap your app in `<BridgeProvider>` at the root. It reads the variables itself, so for hosted auth it needs no props.
 
 ```tsx
 // src/main.tsx
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { BridgeProvider, type BridgeConfig } from '@nebulr-group/bridge-react';
+import { BridgeProvider } from '@nebulr-group/bridge-react';
+import '@nebulr-group/bridge-react/styles';
 import App from './App';
-
-const config: BridgeConfig = {
-  appId: import.meta.env.VITE_BRIDGE_APP_ID,
-};
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BridgeProvider config={config}>
+    <BridgeProvider>
       <BrowserRouter>
         <App />
       </BrowserRouter>
@@ -36,48 +40,29 @@ createRoot(document.getElementById('root')!).render(
 ```
 
 Key points:
-- **No `loginRoute`**: without it, Bridge redirects to the hosted login page instead of an in-app route.
+- **No `loginRoute`**: without it, Bridge sends signed-out visitors to the hosted login page. Setting `loginRoute: '/auth/login'` is the whole switch to in-app sign-in (see the [SDK auth quickstart](../sdk-auth/sdk-quickstart.md)); the routes below stay the same.
 - **`<BridgeProvider>` sits above the router**: it mounts the Bridge runtime once for the whole app.
 - **Client-side rendering**: Bridge requires client-side rendering; a standard Vite + React SPA needs no extra configuration.
 
-## 3. Protect your routes (`src/App.tsx`)
+## 3. Mount Bridge's routes and protect yours (`src/App.tsx`)
 
-Wrap the routes that require a signed-in user in `<ProtectedRoute>`. It shows a loading state until auth resolves and starts the hosted login flow automatically when the user isn't signed in. Register a router adapter once so Bridge can navigate with your router.
+`<BridgeAuthRoutes>` on `/auth/*` serves the page the hosted login redirects back to (`/auth/oauth-callback`), which exchanges the code and takes the user into your app. Wrap the routes that require a signed-in user in `<ProtectedRoute>`: it shows a loading state until auth resolves and starts the hosted login flow when the user isn't signed in.
 
 ```tsx
 // src/App.tsx
-import { CallbackHandler, ProtectedRoute, setRouterAdapter } from '@nebulr-group/bridge-react';
-import { useEffect } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { ProtectedRoute } from '@nebulr-group/bridge-react';
+import { BridgeAuthRoutes } from '@nebulr-group/bridge-react/react-router';
+import { Routes, Route } from 'react-router-dom';
 
 function App() {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    setRouterAdapter({
-      navigate: (path, options) => navigate(path, { replace: options?.replace }),
-      replace: (path) => navigate(path, { replace: true }),
-      getCurrentPath: () => window.location.pathname,
-    });
-  }, [navigate]);
-
   return (
     <Routes>
       {/* Public routes */}
       <Route path="/" element={<HomePage />} />
-      <Route path="/auth/oauth-callback" element={<CallbackHandler />} />
+      <Route path="/auth/*" element={<BridgeAuthRoutes />} />
 
-      {/* Everything below requires auth */}
-      <Route
-        path="/*"
-        element={
-          <ProtectedRoute>
-            <Routes>
-              <Route path="/dashboard" element={<DashboardPage />} />
-            </Routes>
-          </ProtectedRoute>
-        }
-      />
+      {/* Requires a signed-in user */}
+      <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
     </Routes>
   );
 }
@@ -85,55 +70,28 @@ function App() {
 export default App;
 ```
 
-> **Framework note:** React Router is shown here, but any router works.
-> Prebuilt adapter factories ship for the common ones:
-> `createReactRouterAdapter`, `createTanStackRouterAdapter`, and
-> `createWouterAdapter`.
+The `/react-router` entry also registers React Router as Bridge's navigation, so redirects stay in-app. With **TanStack Router**, import `BridgeAuthRoutes` from `@nebulr-group/bridge-react/tanstack-router` and mount it on an `auth/$` route. Without a router, render `<BridgeAuthRoutes base="/auth" />` from the main entry. The router packages are optional peers.
 
-## 4. Add the callback route
+## 4. That's it: no login page needed
 
-Your router needs a route to exist so it doesn't render a 404 when Bridge redirects back to your app. That's the `/auth/oauth-callback` route from step 3:
+With hosted auth, Bridge redirects unauthenticated users to the Bridge hosted login UI. When they finish, they come back to `/auth/oauth-callback`, which `<BridgeAuthRoutes>` handles, and land on the page they first asked for (or `/`). The other auth addresses under `/auth` point at the hosted login too.
 
-```tsx
-<Route path="/auth/oauth-callback" element={<CallbackHandler />} />
-```
+You do not need to create any login, signup or callback pages.
 
-The `CallbackHandler` component handles the OAuth callback token exchange automatically and then redirects into your app.
+## 5. Configuration
 
-## 5. That's it: no login page needed
+The `config` object you pass to `<BridgeProvider>` is a `BridgeConfig`. Every field resolves as *explicit option > environment > default*; an option you pass in code wins over `.env`. The most common fields:
 
-With hosted auth, Bridge automatically redirects unauthenticated users to the Bridge hosted login UI. When the user completes authentication on the hosted page, they are redirected back to the callback route you created in step 4.
+| Field | Environment | Default | Description |
+|-------|-------------|---------|-------------|
+| `appId` | `VITE_BRIDGE_APP_ID` | **(required)** | Your Bridge app ID. Missing everywhere, Bridge refuses to start and names the variable |
+| `apiBaseUrl` | `VITE_BRIDGE_API_BASE_URL` | production | Only for a stage, local or self-hosted app |
+| `hostedUrl` | `VITE_BRIDGE_HOSTED_URL` | follows `apiBaseUrl` | Only for a local or self-hosted Bridge |
+| `callbackUrl` | `VITE_BRIDGE_CALLBACK_URL` | `<origin>/auth/oauth-callback` | Where the hosted login page redirects back to |
+| `defaultRedirectRoute` | `VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE` | `'/'` | Route to land on after login |
+| `debug` | `VITE_BRIDGE_DEBUG` | `false` | Enable debug logging |
 
-You do not need to create any login or signup pages.
-
-## 6. Configuration
-
-The `config` object you pass to `<BridgeProvider>` is a `BridgeConfig`. The most common fields:
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `appId` | **(required)** | Your Bridge app ID |
-| `callbackUrl` | `<origin>/auth/oauth-callback` | Where the hosted login page redirects back to |
-| `defaultRedirectRoute` | `'/'` | Route to land on after login |
-| `debug` | `false` | Enable debug logging |
-
-See the [Configuration reference](/auth/config/) for the full list (token storage, signup route, billing routes).
-
-Rather than hardcoding environment-specific values, keep them in a `.env` file. `<BridgeProvider>` reads `VITE_BRIDGE_*` (Vite) and `REACT_APP_BRIDGE_*` (Create React App) environment variables automatically, and they take priority over props:
-
-```env
-VITE_BRIDGE_APP_ID=your-app-id-here
-VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
-```
-
-```tsx
-// With env vars in place, the provider needs no config at all:
-<BridgeProvider>
-  <App />
-</BridgeProvider>
-```
-
-Supported keys: `VITE_BRIDGE_APP_ID`, `VITE_BRIDGE_API_BASE_URL`, `VITE_BRIDGE_CALLBACK_URL`, `VITE_BRIDGE_DEFAULT_REDIRECT_ROUTE`, `VITE_BRIDGE_LOGIN_ROUTE`, `VITE_BRIDGE_DEBUG` (and their `REACT_APP_BRIDGE_*` equivalents).
+Under Create React App the variables are `REACT_APP_BRIDGE_*`. See the [Configuration reference](/auth/config/) for the full list (token storage, signup route, billing routes).
 
 ## Next steps
 

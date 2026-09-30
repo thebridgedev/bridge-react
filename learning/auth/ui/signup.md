@@ -11,7 +11,10 @@ A signup form with email, first name, and last name fields. There is no password
 | `showLoginLink` | `boolean` | `true` | Show a link to the login page |
 | `loginHref` | `string` | `'/auth/login'` | Login page URL |
 | `heading` | `string` | `'Create your account'` | Custom heading text |
+| `headingSlot` | `ReactNode` | (none) | The heading as a node, on the form step only (the "Check your email" step keeps its own) |
 | `footer` | `ReactNode` | (none) | Custom footer content |
+
+> **You may not need to write this page.** `<BridgeAuthRoutes>` mounted at `/auth/*` already serves `/auth/signup` with this form. Render `SignupForm` yourself only to take that page over: `<BridgeAuthRoutes pages={{ signup: <SignupPage /> }} />`.
 
 **Usage:**
 

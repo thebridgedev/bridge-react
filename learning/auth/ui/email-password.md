@@ -9,7 +9,9 @@ sidebar:
 
 A complete login form with email/password fields. Handles multi-step auth flows inline: forgot password, passkey login, MFA challenge, MFA setup, and workspace selection all appear automatically within the same component when the auth state requires them.
 
-> **Framework note:** in bridge-react, the magic link option is a link to a separate page (default `/auth/magic-link`, set with `magicLinkHref`) where you render the [`MagicLink`](/auth/ui/magic-link/) component, rather than an inline step.
+> **Framework note:** in bridge-react, the magic link option is a link to a separate page (default `/auth/magic-link`, set with `magicLinkHref`), which `<BridgeAuthRoutes>` serves with the [`MagicLink`](/auth/ui/magic-link/) component, rather than an inline step.
+
+> **You may not need to write this page.** `<BridgeAuthRoutes>` mounted at `/auth/*` already serves `/auth/login` with this form (see the [SDK auth quickstart](/sdk-auth/sdk-quickstart/)). Render `LoginForm` yourself only to take that page over: `<BridgeAuthRoutes pages={{ login: <LoginPage /> }} />`.
 
 **Usage:**
 

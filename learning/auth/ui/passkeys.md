@@ -46,6 +46,8 @@ Registers a new passkey using a setup token (emailed to the user).
 | `onError` | `(error: Error) => void` | (none) | Called on error |
 | `loginHref` | `string` | `'/auth/login'` | Link back to the login page |
 
+> **You may not need this page.** `<BridgeAuthRoutes>` mounted at `/auth/*` already serves `/auth/setup-passkey/<token>`. Write your own only to take that page over, and hand it to Bridge by element: `<BridgeAuthRoutes pages={{ 'setup-passkey': ({ token }) => <PasskeySetup token={token!} /> }} />` — a function receives the emailed token.
+
 ```tsx
 // src/pages/SetupPasskeyPage.tsx (rendered at /auth/setup-passkey/:token)
 import { PasskeySetup } from '@nebulr-group/bridge-react';

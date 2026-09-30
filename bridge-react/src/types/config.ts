@@ -1,25 +1,28 @@
+import type { ComponentType } from 'react';
 import type { MessageOverrides, ReturnToConfig } from '@nebulr-group/bridge-auth-core';
+import type { BridgeQuotaRefusal } from '../core/quota-refusal';
 
 /**
  * bridge configuration interface
- * 
- * Configuration can be provided via:
- * 1. Environment variables (recommended) - prefixed with REACT_APP_BRIDGE_* or VITE_BRIDGE_*
- * 2. Props passed to BridgeProvider
- * 3. Default values
- * 
- * @example Environment Variables for Create React App
- * ```env
- * REACT_APP_BRIDGE_APP_ID=your-app-id
- * REACT_APP_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
- * REACT_APP_BRIDGE_DEBUG=true
- * ```
- * 
- * @example Environment Variables for Vite
+ *
+ * Every field resolves as *explicit option > environment > default* (TBP-743,
+ * the same rule as every Bridge plugin). An empty variable counts as unset.
+ *
+ * | Field        | Vite                       | Create React App                |
+ * |--------------|----------------------------|---------------------------------|
+ * | `appId`      | `VITE_BRIDGE_APP_ID`       | `REACT_APP_BRIDGE_APP_ID`       |
+ * | `apiBaseUrl` | `VITE_BRIDGE_API_BASE_URL` | `REACT_APP_BRIDGE_API_BASE_URL` |
+ * | `hostedUrl`  | `VITE_BRIDGE_HOSTED_URL`   | `REACT_APP_BRIDGE_HOSTED_URL`   |
+ * | `debug`      | `VITE_BRIDGE_DEBUG`        | `REACT_APP_BRIDGE_DEBUG`        |
+ *
+ * `callbackUrl`, `defaultRedirectRoute` and `loginRoute` are also read from
+ * `…_BRIDGE_CALLBACK_URL`, `…_BRIDGE_DEFAULT_REDIRECT_ROUTE` and
+ * `…_BRIDGE_LOGIN_ROUTE`.
+ *
+ * @example .env (Vite) — a production app needs only the first line
  * ```env
  * VITE_BRIDGE_APP_ID=your-app-id
- * VITE_BRIDGE_AUTH_BASE_URL=https://api.thebridge.dev/auth
- * VITE_BRIDGE_DEBUG=true
+ * VITE_BRIDGE_API_BASE_URL=https://api-stage.thebridge.dev
  * ```
  */
 export interface BridgeConfig {
@@ -29,6 +32,21 @@ export interface BridgeConfig {
    * @env REACT_APP_BRIDGE_APP_ID or VITE_BRIDGE_APP_ID
    */
   appId?: string;
+
+  /**
+   * Bridge's API address. Only for a non-production app (stage, local,
+   * self-hosted); unset means production (`https://api.thebridge.dev`).
+   * @env VITE_BRIDGE_API_BASE_URL or REACT_APP_BRIDGE_API_BASE_URL
+   */
+  apiBaseUrl?: string;
+
+  /**
+   * Bridge's hosted pages (hosted sign-in, plan selection). On Bridge's own
+   * domains it follows `apiBaseUrl` (`api-stage` → `auth-stage`); set it only
+   * for a local or self-hosted Bridge.
+   * @env VITE_BRIDGE_HOSTED_URL or REACT_APP_BRIDGE_HOSTED_URL
+   */
+  hostedUrl?: string;
 
   /**
    * The URL to redirect to after successful login
@@ -117,28 +135,82 @@ export interface BridgeConfig {
   devBadge?: boolean;
 
   /**
-   * Billing paywall configuration. When set, Bridge redirects authenticated
-   * users that still have to pick a plan (`shouldSelectPlan === true` and the
-   * app has not opted out via `paymentsAutoRedirect: false`) to `paywallRoute`
-   * before the page renders. Mirrors bridge-svelte's `billing` config.
+   * Billing destinations. Every one has a default served by
+   * `<BridgeBillingRoutes />` mounted at `/subscription/*` (TBP-743), so an
+   * app that configures nothing redirects only to pages that exist. Set one to
+   * move it — e.g. `paywallRoute: '/welcome'` for an onboarding page rendering
+   * `<BridgePaywallPage />`.
    */
   billing?: {
     /**
-     * Route to redirect to when the tenant has no plan selected.
-     * e.g. `/welcome`, `/onboarding/plan`, or `/subscription`.
+     * Where a signed-in workspace with no plan is redirected. The default
+     * applies only to an app that has plans (an app without billing has only
+     * plan-less workspaces); a value set here always applies. `false` turns the
+     * redirect off — for an app that gates with the `<BridgePaywall>` overlay
+     * instead, or not at all. Workspaces of an app with `paymentsAutoRedirect`
+     * off are never redirected.
+     * @default '/subscription/plan'
      */
-    paywallRoute?: string;
+    paywallRoute?: string | false;
     /**
-     * Route to redirect to when a Stripe checkout confirmation fails.
-     * Defaults to `/payment-error`.
+     * Where a failed Stripe checkout confirmation lands.
+     * @default '/subscription/error'
      */
     paymentErrorRoute?: string;
     /**
-     * Route where your plan/billing management page lives — the default
-     * destination of the Upgrade/Manage CTA in `<BridgeQuotaBanner>` and
-     * `<BridgeBillingNotice>`. Defaults to `/billing`.
+     * The subscription page — the default destination of the Upgrade/Manage
+     * CTA in `<BridgeQuotaBanner>`, `<BridgeBillingNotice>`, `<QuotaGate>` and
+     * the upgrade dialog. A completed checkout lands on `<manageRoute>/success`.
+     * @default '/subscription'
      */
     manageRoute?: string;
+    /**
+     * The dialog `<BridgeProvider>` opens when your backend refuses a request
+     * because a plan limit is reached — a `402` whose JSON body has
+     * `code: 'QUOTA_EXCEEDED'`, which bridge-nestjs's `@RequireQuota` sends —
+     * or a feature is not on the plan (`402 FEATURE_NOT_IN_PLAN`, or a click on
+     * a `<FeatureFlag>` upgrade prompt). `false` turns it off (listen with
+     * `onBridgeQuotaExceeded()` instead); a component replaces it and receives
+     * `BridgeUpgradeDialogProps`.
+     * @default true
+     */
+    upgradeDialog?: boolean | ComponentType<BridgeUpgradeDialogProps>;
+    /**
+     * Origins of your own backend when it is not on the page's origin, e.g.
+     * `['https://api.example.com']`. A `402 QUOTA_EXCEEDED` from the page's
+     * origin, from Bridge's API, or from a call made with `bridgeFetch()` is
+     * always recognised; one from any other origin only when it is listed here.
+     */
+    apiOrigins?: string[];
   };
 }
 
+/** Props the upgrade dialog receives — the default one, or yours via
+ *  `billing.upgradeDialog: MyDialog`. */
+export interface BridgeUpgradeDialogProps {
+  /** The refusal to explain, or `null` while nothing has been refused. */
+  refusal: BridgeQuotaRefusal | null;
+  /** Where the upgrade button goes: the refusal's `fix` path, else `billing.manageRoute`. */
+  upgradeHref: string;
+  /** Whether this user may manage billing. `false`: a member — tell them to
+   *  contact the workspace owner instead of linking to a page they cannot act on. */
+  canUpgrade: boolean;
+  /** Close the dialog. */
+  onClose: () => void;
+  /** The plan feature the user is missing, by key (or the feature flag's key
+   *  when its rule names no plan feature). With no `refusal`, a non-null
+   *  `feature` opens the dialog in its feature variant. */
+  feature?: string | null;
+  /** The app's plans, each with the features it includes. Used only to name
+   *  the plans that include `feature`. */
+  plans?: ReadonlyArray<PlanWithFeatures> | null;
+}
+
+/** A plan as the plan list returns it, with the features it includes.
+ *  Structural so it holds whichever auth-core release is installed. */
+export interface PlanWithFeatures {
+  key: string;
+  name: string;
+  prices?: ReadonlyArray<{ amount: number }>;
+  features?: ReadonlyArray<{ key: string; name: string }>;
+}

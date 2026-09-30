@@ -4,19 +4,21 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { BridgeWindowExpose } from './components/BridgeWindowExpose';
-// Bridge plugin's structural CSS for its UI components (PlanSelector,
-// ApiTokenManagement, Billing 2.0 drop-ins, etc.). Mirrors svelte/nextjs demos
-// importing `@nebulr-group/<framework>/styles`; here we import the source file
-// directly because the demo aliases the package to source (no built dist).
+// The plugin's styles (tokens + component CSS). The demo imports the source
+// file because it aliases the package to source; an app writes
+// `import '@nebulr-group/bridge-react/styles'`.
 import '../../bridge-react/src/styles.css';
 import './assets/styles.css';
-import { getBridgeConfig } from './utils/env';
+// Demo-only: the e2e suite's per-worker app id.
+import { withTestFixtures } from './utils/env';
 
-const bridgeConfig = getBridgeConfig();
-
+// The app id and API address come from VITE_BRIDGE_APP_ID /
+// VITE_BRIDGE_API_BASE_URL (TBP-743). `loginRoute` switches sign-in to the
+// in-app pages <BridgeAuthRoutes> serves; `/welcome` is the demo's own
+// onboarding paywall (<BridgePaywallPage>).
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BridgeProvider config={bridgeConfig}>
+    <BridgeProvider config={withTestFixtures({ loginRoute: '/auth/login', billing: { paywallRoute: '/welcome' } })}>
       <BridgeWindowExpose />
       <BrowserRouter>
         <App />

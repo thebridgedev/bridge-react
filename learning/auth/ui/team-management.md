@@ -83,7 +83,7 @@ Seats are a plan limit you name, counted by Bridge from membership (active membe
 bridge plan quota set <plan> --metric seats --limit N --policy hard --kind gauge --source membership
 ```
 
-Pass the metric name to the team page and it enforces the limit: **Add Member** is disabled at the plan's limit with a line saying why and an upgrade link (`billing.manageRoute`, default `/billing`), an invite of more addresses than seats left is refused before anything is sent, and the seat count is re-read after an invite, a removal or an enable/disable.
+Pass the metric name to the team page and it enforces the limit: **Add Member** is disabled at the plan's limit with a line saying why and an upgrade link (`billing.manageRoute`, default `/subscription`), an invite of more addresses than seats left is refused before anything is sent, and the seat count is re-read after an invite, a removal or an enable/disable.
 
 ```tsx
 <TeamManagementPanel seatsMetric="seats" />

@@ -32,15 +32,23 @@ A `fallback` render prop also receives why the feature is off, so you can offer 
 <FeatureFlag
   flagKey="reports"
   defaultValue={false}
-  fallback={(_value, { reason, feature }) =>
-    reason === 'plan' ? <a href="/billing">Upgrade to get {feature ?? 'reports'}</a> : null
+  fallback={(_value, { reason, feature, openUpgrade }) =>
+    reason === 'plan' ? <button onClick={openUpgrade}>Upgrade to get {feature ?? 'reports'}</button> : null
   }
 >
   <Reports />
 </FeatureFlag>
 ```
 
-`reason` is `'plan'` (an upgrade alone would turn it on), `'permission'` (this person's role or privileges), `'off'`, `'rule'`, `'rollout'`, or `undefined` while the flag has not loaded. With `'plan'`, `feature` names the plan feature the rule asks for. `useFlag` returns the same `reason` and `feature`.
+`reason` is `'plan'` (an upgrade alone would turn it on), `'permission'` (this person's role or privileges), `'off'`, `'rule'`, `'rollout'`, or `undefined` while the flag has not loaded. With `'plan'`, `feature` names the plan feature the rule asks for. `openUpgrade()` opens the upgrade dialog `<BridgeProvider>` mounts, naming the plans that include the feature; call it from a click — rendering a fallback never opens anything by itself. `useFlag` returns the same `reason` and `feature`.
+
+For the common case, `upgrade` does this for you: with no `fallback`, a feature that is off because of the plan renders an "Upgrade to use this" button that opens the dialog, and anything else renders nothing.
+
+```tsx
+<FeatureFlag flagKey="reports" defaultValue={false} upgrade>
+  <Reports />
+</FeatureFlag>
+```
 
 ## Sending context
 

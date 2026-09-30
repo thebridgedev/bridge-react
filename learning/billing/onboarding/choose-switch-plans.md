@@ -2,16 +2,27 @@
 
 This is the self-service billing page most apps need: one place where a user picks their first plan, upgrades, downgrades, or switches billing interval. `<PlanSelector>` is the whole thing in one component. Unlike [`<BridgePaywall>`](/billing/onboarding/require-plan/), which *forces* a choice before the app loads, this is the always-available page a user visits when they choose to.
 
-Drop `<PlanSelector>` onto your subscription page. It loads the plans and the status of the current workspace (called a *tenant* in the API) automatically, renders plan cards, and handles free plan selection, Stripe Checkout, and plan changes.
+With `<BridgeBillingRoutes>` mounted at `/subscription/*` (see [Add billing to your app](/billing/setup/add-billing-to-your-app/)), `/subscription` already is that page: the current plan, "Manage billing" and the picker. To customise the picker there, take the page over by element — `<BridgeBillingRoutes pages={{ manage: <MySubscriptionPage /> }} />` — and render `<PlanSelector>` inside it.
+
+`<PlanSelector>` loads the plans and the status of the current workspace (called a *tenant* in the API) automatically, renders plan cards, and handles free plan selection, Stripe Checkout, and plan changes.
 
 ```tsx
 // src/pages/SubscriptionPage.tsx
 import { PlanSelector } from '@nebulr-group/bridge-react';
 
 export default function SubscriptionPage() {
-  return <PlanSelector successRedirect="/subscription/success" cancelRedirect="/subscription/cancel" />;
+  return <PlanSelector successRedirect="/subscription/success" cancelRedirect="/subscription" />;
 }
 ```
+
+What it does for you:
+
+- **Billing interval tabs.** When the plans offer more than one paid interval, Monthly / Yearly (and Weekly / Daily) tabs appear. `defaultInterval` picks the initial tab (default `'year'`, falling back to the first interval offered). A free plan stays selectable under every tab.
+- **Cheapest plan first**, by each plan's cheapest price, so the order doesn't change when the user switches tabs.
+- **What each plan includes**: the plan's features list (`bridge plan feature add …`), the same list the upgrade dialog names.
+- **A confirm step before an instant switch.** A workspace that already pays switches plans immediately (no checkout page), so the picker asks "Change plan?" first and shows a confirmation once done.
+- **A free pick goes on to `successRedirect`**, like a completed checkout does — unless you pass `onSelect`, in which case it calls it and stays put.
+- **An empty plan list offers "Try again"**, since it is more often a failed read than an app with no plans.
 
 **Props:**
 
@@ -19,12 +30,26 @@ export default function SubscriptionPage() {
 |------|------|---------|-------------|
 | `successRedirect` | `string` | `'/subscription'` | In-app route to land on after successful payment |
 | `cancelRedirect` | `string` | `'/subscription'` | In-app route to land on if the user cancels checkout |
-| `onSelect` | `({ plan, price }) => void` | (none) | Called after a free plan is selected or a plan change completes |
-| `planCard` | `({ plan, prices, isCurrent, onPick }) => ReactNode` | (none) | Override the default plan card layout |
+| `defaultInterval` | `'day' \| 'week' \| 'month' \| 'year'` | `'year'` | The interval tab selected at first |
+| `onSelect` | `({ plan, price }) => void` | (none) | Called after a free plan is selected or a plan change completes. When given, the picker stays on the page instead of going to `successRedirect` |
+| `planDescription` | `({ plan, isCurrent }) => ReactNode` | (none) | Replaces the description paragraph of the default card |
+| `planFooter` | `({ plan, isCurrent }) => ReactNode` | (none) | Rendered at the bottom of the default card, after the price buttons |
+| `planCard` | `({ plan, prices, isCurrent, interval, onPick }) => ReactNode` | (none) | Replaces the whole default card |
 | `emptyState` | `ReactNode` | (none) | Override the "no plans" message |
 | `loadingState` | `ReactNode` | (none) | Override the loading spinner |
 
 All standard `HTMLAttributes<HTMLDivElement>` props (`className`, `style`, `data-*`, etc.) are forwarded to the root element.
+
+**Customising a card, smallest change first:**
+
+Change only the description, or add a line under the buttons, and keep the rest of the default card:
+
+```tsx
+<PlanSelector
+  planDescription={({ plan }) => <p className="my-plan-copy">{copyFor(plan.key)}</p>}
+  planFooter={({ plan, isCurrent }) => (isCurrent ? <small>Your plan</small> : <small>Cancel any time</small>)}
+/>
+```
 
 **Custom plan card:**
 
@@ -37,7 +62,7 @@ export default function SubscriptionPage() {
   return (
     <PlanSelector
       successRedirect="/subscription/success"
-      cancelRedirect="/subscription/cancel"
+      cancelRedirect="/subscription"
       planCard={({ plan, prices, isCurrent, onPick }) => (
         <div className={isCurrent ? 'plan-card current' : 'plan-card'}>
           <h2>{plan.name}</h2>
@@ -58,19 +83,20 @@ export default function SubscriptionPage() {
 }
 ```
 
-The render prop is called once per plan and receives an object with four fields:
+The render prop is called once per plan and receives an object with five fields:
 
 | Parameter | Type | What it's for |
 |-----------|------|---------------|
 | `plan` | `Plan` | The plan to render: `key`, `name`, `description`, `trial`, `trialDays`, etc. |
 | `prices` | `PriceOfferSdk[]` | The plan's price offers (`amount`, `currency`, `recurrenceInterval`); one button per price is the usual layout |
+| `interval` | `'day' \| 'week' \| 'month' \| 'year'` | The active interval tab, to show only that interval's price |
 | `isCurrent` | `boolean` | `true` when this is the workspace's current plan; use it to highlight the card and disable its buttons |
 | `onPick` | `(price: PriceOfferSdk) => void` | The pick handler; call it with the chosen price when the user clicks |
 
 All you have to wire is calling **`onPick(price)`**; the component figures out whether that's a free selection, a paid checkout, or a plan change. Under the hood, `onPick(price)` branches on the price and the workspace's payment state:
 
-- `price.amount === 0` → calls `selectFreePlan`, refreshes the store
-- paid + `paymentsEnabled` → calls `changePlan`, refreshes the store
+- `price.amount === 0` (and no metered cost) → calls `selectFreePlan`, refreshes billing, goes to `successRedirect` (or calls `onSelect`)
+- paid + `paymentsEnabled` → asks "Change plan?" first, then calls `changePlan` and refreshes billing
 - paid + no payment method yet → calls `startCheckout`, launches Stripe Checkout
 
 > **Tip:** Keep your render prop purely presentational. Don't call `selectFreePlan`, `changePlan`, or `startCheckout` yourself: `onPick` already routes to the right one, and calling `onSelect` on the `<PlanSelector>` is how you react after a free selection or plan change completes.

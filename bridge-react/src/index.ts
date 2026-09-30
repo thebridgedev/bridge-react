@@ -35,6 +35,20 @@ export { SsoButton } from './components/sdk-auth/SsoButton';
 export { SsoProviderIcon } from './components/sdk-auth/SsoProviderIcon';
 export { TenantSelector } from './components/sdk-auth/TenantSelector';
 export { WorkspaceSelector } from './components/sdk-auth/WorkspaceSelector';
+// TBP-743 — every sign-in page from one route. Router-agnostic; the router
+// adapters live at `/react-router` and `/tanstack-router`.
+export {
+  BridgeAuthRoutes,
+  type BridgeAuthRoutesProps,
+} from './components/sdk-auth/BridgeAuthRoutes';
+export {
+  BRIDGE_AUTH_PAGES,
+  parseBridgeAuthRoute,
+  bridgeAuthBase,
+  type BridgeAuthPage,
+  type BridgeAuthRoute,
+} from './core/auth-routes';
+export type { BridgeRouteLocation } from './routing/location';
 
 // ── SDK Auth shared primitives ────────────────────────────────────────────────
 export { Alert } from './components/sdk-auth/shared/Alert';
@@ -50,7 +64,64 @@ export { ProfileName } from './components/ProfileName';
 // PlanSelector = Stripe-direct path; the Bridge* drop-ins read auth-core's
 // billing surface. Both coexist (mirrors bridge-svelte / bridge-nextjs). Hard-
 // replaced the legacy redirect-based `<Subscription />` component.
-export { PlanSelector } from './components/subscription/PlanSelector';
+export {
+  PlanSelector,
+  type PlanSelectorProps,
+  type PlanCardContext,
+} from './components/subscription/PlanSelector';
+// TBP-743 — the subscription page, the paywall and the checkout return pages
+// from one route, plus the pieces they are built from.
+export {
+  BridgeBillingRoutes,
+  type BridgeBillingRoutesProps,
+} from './components/subscription/BridgeBillingRoutes';
+export {
+  BridgePaywallPage,
+  type BridgePaywallPageProps,
+} from './components/subscription/BridgePaywallPage';
+export {
+  BillingPortalButton,
+  type BillingPortalButtonProps,
+} from './components/subscription/BillingPortalButton';
+export {
+  BRIDGE_BILLING_PAGES,
+  BRIDGE_BILLING_DEFAULTS,
+  parseBridgeBillingRoute,
+  resolveBillingRoutes,
+  billingRoutes,
+  type BridgeBillingPage,
+  type BridgeBillingRoute,
+  type BridgeBillingRoutes as BridgeBillingRoutesConfig,
+} from './core/billing-routes';
+// TBP-743 — plan limits in the UI, levels 0/1/2 (see learning/mechanisms.md).
+// Level 0: the upgrade dialog <BridgeProvider> mounts, fed by a backend's 402.
+export {
+  BridgeUpgradeDialog,
+  type BridgeUpgradeDialogProps,
+} from './components/subscription/BridgeUpgradeDialog';
+export {
+  onBridgeQuotaExceeded,
+  dismissQuotaRefusal,
+  parseQuotaRefusal,
+  type BridgeQuotaRefusal,
+} from './core/quota-refusal';
+export {
+  openFeatureUpgrade,
+  dismissFeatureUpgrade,
+  type BridgeFeatureUpgrade,
+} from './core/feature-upgrade';
+export { bridgeFetch } from './core/bridge-fetch';
+// Level 1: one component.
+export {
+  QuotaGate,
+  quotaGateState,
+  type QuotaGateProps,
+  type QuotaGateState,
+} from './components/subscription/QuotaGate';
+export { Entitled, type EntitledProps } from './components/subscription/Entitled';
+// Level 2: your own UI.
+export { useQuota, type QuotaState } from './hooks/use-quota';
+export { useEntitlements, type EntitlementsState } from './hooks/use-entitlements';
 export {
   BridgeSubscriptionStatus,
   type BridgeSubscriptionStatusProps,
@@ -137,6 +208,8 @@ export type {
   BridgeAppSurface,
   BridgeTenantSurface,
   BridgeReadable,
+  BridgeUsageSurface,
+  UsageQueueStatus,
 } from './core/bridge';
 export type { LazySlice } from './core/lazy-slice';
 export type {
@@ -253,7 +326,10 @@ export type {
   TeamWorkspace,
   TeamWorkspaceUpdateInput,
 } from '@nebulr-group/bridge-auth-core';
-export type { BridgeConfig } from './types/config';
+export type { BridgeConfig, PlanWithFeatures } from './types/config';
+// TBP-743 — the config resolution <BridgeProvider> applies: explicit option >
+// environment (`VITE_BRIDGE_*`, `REACT_APP_BRIDGE_*`) > default.
+export { resolveBridgeConfig, readBridgeEnv, hostedUrlFor, type BridgeEnv } from './core/resolve-config';
 export type { RouterAdapter } from './types/router';
 
 // Router adapters
