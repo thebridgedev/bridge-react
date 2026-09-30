@@ -26,6 +26,7 @@ import {
   type BillingSubscriptionState,
 } from '@nebulr-group/bridge-auth-core';
 import { getBridgeAuth, getBridgeConfig } from '../../core/bridge-instance';
+import { tokenStaleHandler } from '../../core/bridge-runtime';
 import { useBridgeSnapshot } from '../../hooks/use-bridge-readable';
 
 type Chassis = 'bar' | 'rail' | 'card';
@@ -83,6 +84,9 @@ export function BridgeBillingNotice({
         apiBaseUrl: ctx.apiBaseUrl,
         accessToken: ctx.accessToken,
         appId: ctx.appId,
+        // TBP-762 — right after a checkout the sign-in is out of date; renew it
+        // and retry once instead of showing "Subscription unavailable".
+        onTokenStale: tokenStaleHandler(),
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
