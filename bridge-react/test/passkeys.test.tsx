@@ -18,6 +18,7 @@ import { en } from '@nebulr-group/bridge-auth-core';
 import { PasskeyLogin } from '../src/components/sdk-auth/PasskeyLogin';
 import { PasskeySetup } from '../src/components/sdk-auth/PasskeySetup';
 import { PasskeyRequestSetupLink } from '../src/components/sdk-auth/PasskeyRequestSetupLink';
+import { LoginForm } from '../src/components/sdk-auth/LoginForm';
 import { _resetBridgeInstance, getBridgeAuth, initBridge } from '../src/core/bridge-instance';
 
 const w = window as unknown as Record<string, unknown>;
@@ -108,6 +109,25 @@ describe('passkeys', () => {
     await waitFor(() => expect(container.textContent).toContain(en['passkey.error.expired']));
     fireEvent.click(getByText(en['passkey.requestNewLink']));
     expect(expired).toBe(true);
+  });
+
+  // TBP-743 — found on stage with the published 0.8.0-beta.1: "no passkey on
+  // this device" sent LoginForm to `/auth/setup-passkey`, which
+  // <BridgeAuthRoutes> does not serve ("Page not found."). Revert-proof: on the
+  // parent commit the form only navigates, and no email field ever appears.
+  it('LoginForm: no passkey on this device asks for the email in place, not a missing page', async () => {
+    (w.__simpleWebAuthn as Record<string, unknown>).startAuthentication = async () => {
+      throw Object.assign(new Error('none'), { name: 'NotAllowedError' });
+    };
+    const before = window.location.href;
+    const { container } = render(<LoginForm showPasskeys />);
+    fireEvent.click(container.querySelector('[data-bridge-passkey-login]')!);
+    await waitFor(() => expect(container.querySelector('#passkey-request-email')).not.toBeNull());
+    expect(container.querySelector('#login-email')).toBeNull();
+    expect(window.location.href).toBe(before);
+    fireEvent.change(container.querySelector('#passkey-request-email')!, { target: { value: 'ada@example.com' } });
+    fireEvent.submit(container.querySelector('form')!);
+    await waitFor(() => expect(calls).toContain('bridge:setup-link:ada@example.com'));
   });
 
   it('requesting a setup link calls auth-core’s requestPasskeySetupLink', async () => {
