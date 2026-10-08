@@ -1,7 +1,7 @@
 {
   "name": "@nebulr-group/bridge-react",
   "version": "0.8.0",
-  "description": "bridge integration for React applications",
+  "description": "The Bridge for React: sign-in, workspaces and roles, feature flags, Stripe subscriptions and plan limits, with React Router or TanStack Router.",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
@@ -46,7 +46,7 @@
   "bugs": {
     "url": "https://github.com/thebridgedev/bridge-react/issues"
   },
-  "homepage": "https://thebridge.dev",
+  "homepage": "https://thebridge.dev/docs/quickstart/react/",
   "scripts": {
     "build": "rm -rf ./dist && rollup -c --bundleConfigAsCjs && bun run copy-styles",
     "build:watch": "rollup -c --bundleConfigAsCjs --watch",
@@ -59,11 +59,25 @@
     "publish-package": "bun run build && bun run copy-files && bunx npm publish --access public"
   },
   "keywords": [
-    "bridge",
     "react",
+    "react-router",
+    "tanstack-router",
+    "passkeys",
+    "magic-link",
+    "the-bridge",
+    "bridge",
     "authentication",
+    "auth",
+    "login",
+    "sso",
     "feature-flags",
-    "team-management"
+    "stripe",
+    "subscriptions",
+    "billing",
+    "plan-limits",
+    "multi-tenant",
+    "rbac",
+    "saas"
   ],
   "peerDependencies": {
     "react": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
