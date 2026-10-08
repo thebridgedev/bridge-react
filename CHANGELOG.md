@@ -1,7 +1,5 @@
 # Changelog
 
-All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the package uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
 ## [0.8.0] - 2026-09-30
 
 ### Added
@@ -33,33 +31,3 @@ All notable changes to this package are documented here. The format follows [Kee
 - **Session snapshot on first connection.** After sign-in, the workspace name and id, the branding and the entitlements now appear immediately. Previously they stayed empty, so every entitlement check answered no and a paywall built on one would lock everyone out.
 - **Live updates and browser usage reporting.** Live updates now connect, so plans, entitlements and usage counters refresh without a page reload, and usage reported from the browser is recorded. Previously the browser rejected these calls, so live updates never connected and browser-side usage reports were lost.
 - **Documentation links.** Three pages in the guides linked to addresses with no page behind them; they now resolve.
-
-## [0.2.1] - 2025-02-17
-
-### Added
-
-- Install test: `bun run test:install` and CI workflow to verify the packed package installs with React 18 and React 19.
-
-### Changed
-
-- Peer dependencies `react` and `react-dom` updated to include `^19.0.0` for React 19 compatibility.
-
-### Fixed
-
-- Install test script now cleans up `install-test-tmp` and `install-test-pkg.tgz` after run (and on exit).
-
-## [0.2.0] - 2025-02-15
-
-### Changed
-
-- Documentation: README default callback URL corrected to `origin + '/auth/oauth-callback'`.
-- Quickstart and examples: consistent "Bridge" product naming.
-- Plan service and related hooks for subscription/plan management.
-
-## [0.1.0] - Previous
-
-Initial release.
-
-[0.2.1]: https://github.com/thebridgedev/bridge-react/releases/tag/v0.2.1
-[0.2.0]: https://github.com/thebridgedev/bridge-react/releases/tag/v0.2.0
-[0.1.0]: https://github.com/thebridgedev/bridge-react/releases/tag/v0.1.0
