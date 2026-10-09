@@ -20,7 +20,7 @@ import { BridgeQuotaBanner } from '@nebulr-group/bridge-react';
 
 ## Three ways to handle a limit
 
-Pick the lowest level that does the job. Each is optional; level 0 is on without code. The rules behind them (where a limit is counted, counter or gauge) are in [How Bridge works](/mechanisms/).
+Pick the lowest level that does the job. Each is optional; level 0 is on without code. The rules behind them (where a limit is counted, counter or gauge) are in [How Bridge works](../../mechanisms.md).
 
 | Level | What the page writes | What the user sees |
 |---|---|---|
