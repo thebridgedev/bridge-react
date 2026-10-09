@@ -6,6 +6,7 @@
   "author": "Iman Pouya",
   "workspaces": ["bridge-react", "demo"],
   "scripts": {
+    "check:docs-links": "node scripts/check-docs-links.mjs",
     "dev": "bun run --filter demo dev",
     "build": "bun run --filter @nebulr-group/bridge-react build",
     "build:watch": "bun run --filter @nebulr-group/bridge-react build:watch",
