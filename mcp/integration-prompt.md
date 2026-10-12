@@ -8,12 +8,12 @@ This is the only decision that shapes the rest of the integration, and getting i
 
 | You want | Use | What you build |
 |---|---|---|
-| The fastest path; Bridge owns the login UI | **Hosted auth** (default) | Nothing beyond the one `/auth/*` route below |
-| Login inside your own app, your own styling | **SDK auth** | The same one `/auth/*` route, plus `loginRoute: '/auth/login'` in the config |
+| Login inside your own app, matching its design | **SDK auth** (default) | The one `/auth/*` route below, plus `loginRoute: '/auth/login'` in the config — `sdk-auth-prompt.md` |
+| Bridge owns the login UI | **Hosted auth** — only when the developer explicitly asks for it | The same one `/auth/*` route, no `loginRoute` |
 
-**Hosted is the default and needs no `loginRoute`.** Adding `loginRoute: '/auth/login'` is the whole switch to in-app mode. Either way `<BridgeAuthRoutes>` serves every sign-in page (login, signup, the OAuth callback, set-password, forgot-password, magic-link, setup-passkey, workspaces) from one route: **never hand-write those pages.**
+**SDK auth is the default.** Adding `loginRoute: '/auth/login'` is the whole switch to in-app mode; leaving it out is hosted. Either way `<BridgeAuthRoutes>` serves every sign-in page (login, signup, the OAuth callback, set-password, forgot-password, magic-link, setup-passkey, workspaces) from one route: **never hand-write those pages.**
 
-If the user has not said, ask. Do not guess: a wrong guess here is the most expensive rework in this guide.
+Do not ask the developer to choose: use SDK auth unless they explicitly asked for hosted sign-in, or the app is already on hosted sign-in and they have not asked to change it. Say which in one line, and follow `sdk-auth-prompt.md` (`get_integration_guide` topic `auth`, or `bridge guide react sdk-auth`) for the auth pages and their styling.
 
 ## Prerequisites
 

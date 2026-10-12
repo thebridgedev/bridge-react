@@ -6,12 +6,12 @@ You are wiring authentication into a React application that uses The Bridge.
 
 | You want | Mode | What you build | Config |
 |---|---|---|---|
-| Bridge owns the login UI | **Hosted** (default) | One `/auth/*` route rendering `<BridgeAuthRoutes />` | No `loginRoute` |
-| Login inside your app, your styling | **SDK auth** | The same one `/auth/*` route | `loginRoute: '/auth/login'` |
+| Login inside your app, matching its design | **SDK auth** (default) — this guide | One `/auth/*` route rendering `<BridgeAuthRoutes />` | `loginRoute: '/auth/login'` |
+| Bridge owns the login UI | **Hosted** — only when the developer explicitly asks for it | The same one `/auth/*` route | No `loginRoute` |
 
 **One config field is the entire switch.** Adding `loginRoute` to `BridgeConfig` turns hosted mode off. If you are being redirected to a route you never built, that field is why.
 
-If the user has not said which they want, ask. This is not a detail to infer — a wrong guess means rewriting the auth pages.
+Do not ask the developer to choose: this guide is the approach unless they asked for hosted. Tell them in one line that sign-in will be in-app, styled to match their app.
 
 The rest of this guide covers **SDK auth**. For hosted, there is nothing to build beyond the `/auth/*` route in `integration-prompt.md`.
 
@@ -87,7 +87,34 @@ Without a router: `<BridgeAuthRoutes base="/auth" />` from the main entry.
 
 **Do not hand-write `/auth/login`, `/auth/signup`, `/auth/set-password/:token` or any other auth page.** The set-password page is where every signup verification email lands; a forgotten one sends every new signup to a 404. `<BridgeAuthRoutes>` owns the list.
 
-Customise in rungs, climbing only as far as needed:
+## Match the app's design — always
+
+The sign-in pages render inside the app, so they must look like the rest of it. Bridge's built-in look (indigo buttons, grey borders) is a fallback for an app with no design, never the finished result. Do this without asking:
+
+1. **Read the app's design.** The global stylesheet (`src/index.css`, `src/App.css` or what `main.tsx` imports) and its CSS variables, `tailwind.config.*` or the Tailwind `@theme` block, a component library's theme (shadcn/ui, MUI, Chakra, Mantine, …), the font the app loads, and one existing primary button and text input.
+2. **Set the `--bridge-*` tokens from it** in that global stylesheet, pointing at the app's own variables rather than copying values, so dark mode and later theme changes carry over:
+
+   ```css
+   :root {
+     --bridge-primary: var(--color-primary);          /* the app's primary button background */
+     --bridge-primary-hover: var(--color-primary-hover);
+     --bridge-primary-fg: var(--color-primary-foreground);
+     --bridge-border: var(--color-border);
+     --bridge-input-focus: var(--color-ring);
+     --bridge-border-radius: var(--radius);
+     --bridge-foreground: var(--color-foreground);
+     --bridge-muted: var(--color-muted-foreground);
+     --bridge-bg: var(--color-background);
+     --bridge-muted-bg: var(--color-muted);
+   }
+   ```
+
+   The names on the right are examples: use the variables the app actually defines, or its literal values when it has none. Map its error and success colours to the `--bridge-alert-*` tokens. The components inherit the page font; set nothing for it unless the app puts its font on something other than `body`. The full token list: `bridge guide mechanisms`.
+3. **Give the pages the app's frame** when the app's own pages sit in a card, a panel or a split layout: pass `frame={(page, children) => …}` to `<BridgeAuthRoutes>` (rung 2 below), built from the app's own classes or components, so sign-in is not the one page that looks different.
+
+Ask the developer for colours only when the project has no styles of its own.
+
+Customise further in rungs, climbing only as far as needed:
 
 1. `--bridge-*` CSS tokens (colours, radius, spacing).
 2. `frame={(page, children) => …}` replaces everything around the form on every page; `heading={(page) => …}` replaces each page's main heading.
