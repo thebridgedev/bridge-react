@@ -34,6 +34,7 @@ import {
 } from '@nebulr-group/bridge-auth-core';
 
 import { setBridgeFlagsInstance, notifyFlagChanged, notifyAllFlagsChanged } from './registry';
+import { coalesceUsageReports, type CoalescedUsageReporter } from './evaluation-count';
 import { getBridgeAuth, useBridgeStore } from '../core/bridge-instance';
 import { _getDevAttributeProvider } from '../core/bridge';
 import { getBridgeRealtime, onBridgeRealtimeOpen, tokenStaleHandler } from '../core/bridge-runtime';
@@ -126,6 +127,12 @@ export interface BridgeFlagsBundle {
   telemetry: TelemetryBatcher;
   authAttributeProvider: AuthAttributeProvider;
   billingAttributeProvider: BillingAttributeProvider;
+  /**
+   * TBP-941 — settles once the first read of the flag definitions has finished
+   * (loaded or failed). Never rejects. `<BridgeProvider>` waits for it, capped,
+   * before the first render of a signed-in page.
+   */
+  definitionsLoaded: Promise<void>;
   /** Stop telemetry + unsubscribe from auth events. Idempotent. */
   stop: () => Promise<void>;
 }
@@ -192,9 +199,16 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig = {}): BridgeF
 
   // Billing 2.0 US-11 — self-report `bridge.flag_evaluations` to the usage
   // pipeline. Best-effort: in harnesses without BridgeAuth, skip.
+  //
+  // TBP-942 — summed per second before it is queued: React evaluates a flag on
+  // every render that reads it, and one queued event per evaluation crowded
+  // the app's own `bridge.usage.report()` out of the shared usage queue, so a
+  // `<QuotaGate>` closed only after a reload. Same total, far fewer events.
+  let evaluationCounter: CoalescedUsageReporter | undefined;
   try {
     const auth = getBridgeAuth();
-    bridge.setUsageReporter(auth.usage);
+    evaluationCounter = coalesceUsageReports(auth.usage);
+    bridge.setUsageReporter(evaluationCounter);
   } catch {
     // No BridgeAuth instance yet — flags can still operate without usage reporting.
   }
@@ -299,7 +313,7 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig = {}): BridgeF
 
   // Initial hydrate fires here too — covers the case where realtime is disabled
   // and onOpen never fires.
-  void hydrateFlagsCache();
+  const definitionsLoaded = hydrateFlagsCache();
 
   if (config.registerGlobal !== false) {
     setBridgeFlagsInstance(bridge);
@@ -337,9 +351,37 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig = {}): BridgeF
     }
   });
 
+  // TBP-941 (port of bridge-svelte TBP-810) — the billing provider reads these
+  // stores at eval time, so a mounted `<FeatureFlag>` / `useFlag()` only sees a
+  // change if something re-evaluates after the store moved: the plan's features
+  // arriving after sign-in, a workspace switch, a checkout. One re-eval per
+  // burst: plan, entitlements and quota updates land together.
+  let billingReevalQueued = false;
+  const onBillingStoreChange = (): void => {
+    if (billingReevalQueued) return;
+    billingReevalQueued = true;
+    queueMicrotask(() => {
+      billingReevalQueued = false;
+      notifyAllFlagsChanged();
+    });
+  };
+  const unsubscribeBilling: Array<() => void> = [];
+  try {
+    const billing = useBridge();
+    unsubscribeBilling.push(
+      billing.subscription.subscribe(onBillingStoreChange),
+      billing.quotas.subscribe(onBillingStoreChange),
+      billing.entitlementsStore.subscribe(onBillingStoreChange),
+    );
+  } catch {
+    // No billing bridge — nothing to follow.
+  }
+
   const stop = async (): Promise<void> => {
     unsubscribeAuth();
+    for (const off of unsubscribeBilling.splice(0)) off();
     unsubscribeOpen();
+    evaluationCounter?.stop();
     await telemetry.stop();
   };
 
@@ -349,6 +391,7 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig = {}): BridgeF
     telemetry,
     authAttributeProvider,
     billingAttributeProvider,
+    definitionsLoaded,
     stop,
   };
 }

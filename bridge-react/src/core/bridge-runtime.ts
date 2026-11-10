@@ -62,6 +62,7 @@ import {
   trackAuthorizationChange,
 } from './guard-cache';
 import { logger } from '../utils/logger';
+import { reloadSessionBilling } from './startup-reads';
 
 const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
 
@@ -238,8 +239,11 @@ async function catchUpSessionSnapshot(isStale: () => boolean): Promise<CatchUpCh
     // with this read.
     if (isStale() || !sameSession(token, _currentAuthToken)) return none;
     const changes = applyCatchUpSnapshot(data);
-    if (changes.entitlementsChanged && data?.tenant?.entitlements) {
-      // Keep auth-core's copy (what flag targeting reads) in step too.
+    if (data?.tenant?.entitlements) {
+      // Keep auth-core's copy (what flag targeting reads) in step too —
+      // TBP-941: hydration included. Only a CHANGE used to be copied, so a
+      // first connect filled `bridge.tenant.entitlements` and left the copy
+      // flag rules read empty: every plan-gated feature stayed locked.
       try { useBillingBridge().entitlementsStore?.applyEntitlementsChanged(data.tenant.entitlements); } catch { /* defensive */ }
     }
     return changes;
@@ -686,6 +690,32 @@ export function startBridgeRuntime(options: StartBridgeRuntimeOptions = {}): voi
     // TBP-654 — a new token (sign-in, the refresh a plan change causes,
     // sign-out) invalidates every gate verdict taken with the old one.
     if (tokenChanged) authorizationChanged('token');
+
+    // TBP-942 — quota reads carry the CURRENT token, as in bridge-svelte,
+    // bridge-nextjs and bridge-angular. Only the flags bootstrap configured the
+    // store, once, with the token the page started with, so the read-back
+    // after a usage report (TBP-700) and every first read after a sign-in or a
+    // workspace switch went out with an old session's token, or none.
+    try {
+      const auth = getBridgeAuth();
+      const ctx = auth.getApiContext();
+      useBillingBridge().quotas.configure({
+        apiBaseUrl: (ctx.apiBaseUrl ?? DEFAULT_API_BASE_URL).replace(/\/+$/, ''),
+        appId: ctx.appId,
+        accessToken: accessToken ?? null,
+        onTokenStale: tokenStaleHandler(),
+      });
+    } catch {
+      // No BridgeAuth / billing bridge yet — quota hydration falls back to live pushes.
+    }
+
+    // TBP-941 — a different session (sign-in, workspace switch) or a token that
+    // carries a different plan: read what it is entitled to now, as
+    // bridge-svelte does on a renewed sign-in. A renewal that only moved
+    // iat/exp (the scheduled refresh, the post-connect reconcile) reads nothing.
+    if (!seed && accessToken && prevAuthToken !== accessToken && !sameAuthorization(prevAuthToken, accessToken)) {
+      void reloadSessionBilling();
+    }
 
     if (!accessToken) {
       // Logout — drop user + workspace channel scopes. The app channel keeps

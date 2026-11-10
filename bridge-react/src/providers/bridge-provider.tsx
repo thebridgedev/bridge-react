@@ -20,6 +20,7 @@ import { resolveBridgeConfig } from '../core/resolve-config';
 import { appUsesBilling, billingRoutes, isPaywallExempt } from '../core/billing-routes';
 import { installQuotaObserver, uninstallQuotaObserver } from '../core/bridge-fetch';
 import { BridgeUpgradeMount } from '../components/subscription/BridgeUpgradeMount';
+import { loadBeforeFirstRender, withinWait } from '../core/startup-reads';
 
 interface BridgeProviderProps {
   /** Your bridge application ID - can be provided directly or via config */
@@ -107,6 +108,10 @@ function buildAuthConfig(appId: string | undefined, config: BridgeConfig | undef
 export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, children }) => {
   const initedRef = useRef(false);
   const flagsBundleRef = useRef<BridgeFlagsBundle | null>(null);
+  // TBP-941 — the startup reads a page that loads signed in waits for before
+  // its first render (null: nothing to wait for).
+  const startupRef = useRef<Promise<void> | null>(null);
+  const [startupDone, setStartupDone] = useState(false);
   // Resolved once: explicit option > environment > default (TBP-743).
   const [boot] = useState<{ config: (BridgeConfig & BridgeAuthConfig) | null; error: string | null }>(() => {
     try {
@@ -150,11 +155,43 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
     } catch (err) {
       logger.debug('[BridgeProvider] feature flags bootstrap skipped:', err);
     }
+    // TBP-941 (port of bridge-svelte TBP-810) — a page that loads signed in
+    // reads the plan's features, the billing state and the flag definitions
+    // before it renders, each capped at 1.5 s. Without them every plan-gated
+    // `<FeatureFlag>` was judged on an empty, fail-closed store: a paying
+    // customer saw "Upgrade to use this" on reload and after signing in.
+    try {
+      if (getBridgeAuth().getApiContext().accessToken) {
+        startupRef.current = loadBeforeFirstRender(flagsBundleRef.current?.definitionsLoaded);
+      } else {
+        void loadBeforeFirstRender(); // configures the entitlements store for a later sign-in
+      }
+    } catch (err) {
+      logger.debug('[BridgeProvider] startup reads skipped:', err);
+    }
     // TBP-743 — level 0 of the plan-limit UI: a 402 from the app's backend
     // opens the upgrade dialog with no code on the page.
     installQuotaObserver();
     logger.debug('[BridgeProvider] core runtime bootstrap complete', authConfig);
   }
+
+  // TBP-941 — render the app once the startup reads have settled. Waits on the
+  // flags bundle that is current then: under StrictMode the simulated remount
+  // replaces the one created during render.
+  useEffect(() => {
+    const startup = startupRef.current;
+    if (!startup) return;
+    let cancelled = false;
+    void startup
+      .then(() => withinWait(flagsBundleRef.current?.definitionsLoaded ?? Promise.resolve()))
+      .then(() => {
+        if (!cancelled) setStartupDone(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const waitingForStartup = startupRef.current !== null && !startupDone;
 
   // Refuses to start without an app id, and says which variable to set. The
   // children still render (a public landing page keeps working); anything that
@@ -296,7 +333,7 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
   // checks NODE_ENV); `config.devBadge: false` turns it off there too.
   return (
     <>
-      {children}
+      {waitingForStartup ? null : children}
       <RealtimeDevBadge enabled={config?.devBadge !== false} />
       {initedRef.current ? <BridgeUpgradeMount /> : null}
     </>

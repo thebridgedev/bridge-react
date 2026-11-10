@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2] - 2026-11-09
+
+### Fixed
+
+- **Paid features stay unlocked after a reload.** A workspace on a plan that includes a feature now sees it unlocked from the first paint: on a reload, after signing in again and after switching workspace. Before, a feature gated on the plan (`<FeatureFlag>` with a `bridge:billing.entitlement.*` rule) showed "Upgrade to use this" on most page loads, because the SDK never read the plan's features (`GET /entitlements`); it only looked right straight after a checkout. A page that loads signed in now reads the plan's features, the billing state and the flag definitions before it renders (each capped at 1.5 s, like the Svelte SDK), and reads them again when the session changes. (TBP-941)
+- **A plan limit closes as soon as it is reached.** After `bridge.usage.report()` uses up a hard limit, `<QuotaGate>` and `useQuota()` show it within a couple of seconds, without a reload. Before, the SDK queued one `bridge.flag_evaluations` count per flag on every render, ahead of the app's own report, so a busy page could hold that report back for many seconds and a Free workspace could go past its limit. The SDK now adds those counts up and sends them about once a second, with the same total. Quota reads also use the current sign-in after a sign-in or workspace switch. (TBP-942)
+
 ## [0.8.1] - 2026-11-04
 
 ### Fixed
