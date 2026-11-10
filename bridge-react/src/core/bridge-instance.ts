@@ -150,10 +150,12 @@ export function initBridge(config: BridgeAuthConfig): BridgeAuth {
   });
 
   _instance.on('auth:logout', () => {
+    resetSubscriptionReads();
     useBridgeStore.setState({
       tokens: null,
       profile: null,
       flags: {},
+      subscription: { status: null, plans: null, loading: false, error: null },
     });
   });
 
@@ -175,6 +177,7 @@ export function initBridge(config: BridgeAuthConfig): BridgeAuth {
   });
 
   _instance.on('auth:workspace-changed', (tokens) => {
+    resetSubscriptionReads();
     useBridgeStore.setState({
       tokens,
       flags: {},
@@ -247,28 +250,75 @@ export function waitForBridge(): Promise<void> {
 }
 
 // ── Subscription ──────────────────────────────────────────────────────────────
+//
+// TBP-762 — one refresh rule for the plan list and the current plan (ported
+// from bridge-svelte's `core/bridge-instance.ts`).
+//
+// Every screen used to fetch on its own, so a list loaded once was served for
+// the life of the tab: a plan added in Bridge never appeared until a reload.
+// Now:
+//   - concurrent calls share one read, and a call made while a read is in
+//     flight gets a second read after it — the caller asked because something
+//     changed, and the in-flight answer may predate that;
+//   - a read that fails, or answers with an empty plan list, is retried once;
+//   - a background re-read never blanks what is on screen: `loading` is only
+//     true while there is nothing to show, and a failed re-read keeps the last
+//     good answer instead of replacing it with an error;
+//   - an answer that arrives after sign-out or a workspace switch is dropped.
+// `core/billing-refresh.ts` decides WHEN to re-read (sign-in renewal, live
+// billing events, tab focus after 30 s); this is HOW.
 
+/** Delay before the one retry of a failed or empty read. */
+let _retryDelayMs = 1000;
+/** @internal — test-only: shorten the retry delay. */
+export function __setBillingRetryDelay(ms: number): void {
+  _retryDelayMs = ms;
+}
+/** @internal — the delay before a billing read's one retry. */
+export function billingRetryDelay(): number {
+  return _retryDelayMs;
+}
+
+let _subInflight: Promise<void> | null = null;
+let _subAgain = false;
 let _subscriptionLoadedAt = 0;
+let _subWanted = false;
+/** Bumped on sign-out and workspace switch; a read started before is discarded. */
+let _subGeneration = 0;
 
-export async function loadSubscription(): Promise<void> {
-  useBridgeStore.setState((s) => ({
-    subscription: { ...s.subscription, loading: true, error: null },
-  }));
-  try {
-    const [status, plans] = await Promise.all([
-      getBridgeAuth().getSubscriptionStatus(),
-      getBridgeAuth().getPlans(),
-    ]);
-    useBridgeStore.setState({
-      subscription: { status, plans, loading: false, error: null },
-    });
-    _subscriptionLoadedAt = Date.now();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Failed to load subscription';
-    useBridgeStore.setState((s) => ({
-      subscription: { ...s.subscription, loading: false, error: msg },
-    }));
+function resetSubscriptionReads(): void {
+  _subGeneration += 1;
+  _subscriptionLoadedAt = 0;
+}
+
+/** When the plan list and status were last read successfully (ms epoch), 0 if never. */
+export function subscriptionLoadedAt(): number {
+  return _subscriptionLoadedAt;
+}
+
+/** True once any screen has asked for the plan list / status in this session. */
+export function subscriptionWanted(): boolean {
+  return _subWanted;
+}
+
+/** Re-read the plan list and the current plan. Never rejects. */
+export function loadSubscription(): Promise<void> {
+  _subWanted = true;
+  if (_subInflight) {
+    _subAgain = true;
+    return _subInflight;
   }
+  _subInflight = (async () => {
+    try {
+      do {
+        _subAgain = false;
+        await readSubscriptionOnce();
+      } while (_subAgain);
+    } finally {
+      _subInflight = null;
+    }
+  })();
+  return _subInflight;
 }
 
 /**
@@ -277,10 +327,57 @@ export async function loadSubscription(): Promise<void> {
  * between them does not re-read every time (mirrors bridge-svelte TBP-762).
  */
 export function ensureSubscription(maxAgeMs = 30_000): Promise<void> {
-  const { status, plans, loading } = useBridgeStore.getState().subscription;
-  if (loading) return Promise.resolve();
-  if (status && plans && Date.now() - _subscriptionLoadedAt < maxAgeMs) return Promise.resolve();
+  if (_subInflight) return _subInflight;
+  if (_subscriptionLoadedAt > 0 && Date.now() - _subscriptionLoadedAt < maxAgeMs) return Promise.resolve();
   return loadSubscription();
+}
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function readSubscriptionOnce(): Promise<void> {
+  const generation = _subGeneration;
+  const current = useBridgeStore.getState().subscription;
+  const hasData = current.status !== null || current.plans !== null;
+  if (!hasData) {
+    useBridgeStore.setState((s) => ({ subscription: { ...s.subscription, loading: true, error: null } }));
+  }
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const [status, plans] = await Promise.all([
+        getBridgeAuth().getSubscriptionStatus(),
+        getBridgeAuth().getPlans(),
+      ]);
+      if (generation !== _subGeneration) return;
+      // An empty list is more often a read that raced a change than an app
+      // with no plans: ask once more before believing it.
+      if ((plans?.length ?? 0) === 0 && attempt === 0) {
+        await wait(_retryDelayMs);
+        if (generation !== _subGeneration) return;
+        continue;
+      }
+      useBridgeStore.setState({ subscription: { status, plans, loading: false, error: null } });
+      _subscriptionLoadedAt = Date.now();
+      return;
+    } catch (err) {
+      if (generation !== _subGeneration) return;
+      if (attempt === 0) {
+        await wait(_retryDelayMs);
+        if (generation !== _subGeneration) return;
+        continue;
+      }
+      const msg = err instanceof Error ? err.message : 'Failed to load subscription';
+      logger.warn('[bridge-instance] subscription read failed:', msg);
+      const latest = useBridgeStore.getState().subscription;
+      if (latest.status !== null || latest.plans !== null) {
+        // Keep the last good answer on screen; the next trigger re-reads.
+        useBridgeStore.setState((s) => ({ subscription: { ...s.subscription, loading: false } }));
+      } else {
+        useBridgeStore.setState((s) => ({ subscription: { ...s.subscription, loading: false, error: msg } }));
+      }
+      return;
+    }
+  }
 }
 
 // ── Stripe checkout return (TBP-723) ──────────────────────────────────────────
@@ -350,6 +447,11 @@ export function _resetBridgeInstance(): void {
   _appConfigPromise = null;
   _checkoutConfirmation = null;
   _subscriptionLoadedAt = 0;
+  _subInflight = null;
+  _subAgain = false;
+  _subWanted = false;
+  _subGeneration += 1;
+  _retryDelayMs = 1000;
   _resolveReady = null;
   useBridgeStore.setState({
     tokens: null,

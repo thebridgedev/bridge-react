@@ -21,6 +21,7 @@ import { appUsesBilling, billingRoutes, isPaywallExempt } from '../core/billing-
 import { installQuotaObserver, uninstallQuotaObserver } from '../core/bridge-fetch';
 import { BridgeUpgradeMount } from '../components/subscription/BridgeUpgradeMount';
 import { loadBeforeFirstRender, withinWait } from '../core/startup-reads';
+import { startBillingRefresh } from '../core/billing-refresh';
 
 interface BridgeProviderProps {
   /** Your bridge application ID - can be provided directly or via config */
@@ -222,6 +223,10 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
 
     startBridgeRuntime();
     installQuotaObserver();
+    // TBP-762 — the billing screens' refresh rule: re-read the plan list,
+    // current plan and billing state on a renewed sign-in and on tab focus
+    // after 30 s (live billing events are wired in the runtime).
+    const stopBillingRefresh = startBillingRefresh();
     if (!flagsBundleRef.current) {
       try {
         flagsBundleRef.current = createBridgeFlags();
@@ -236,6 +241,7 @@ export const BridgeProvider: FC<BridgeProviderProps> = ({ appId, config, childre
         flagsBundleRef.current = null;
       }
       uninstallQuotaObserver();
+      stopBillingRefresh();
       void stopBridgeRuntime();
     };
   }, []);

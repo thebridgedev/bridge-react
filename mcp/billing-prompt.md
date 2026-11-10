@@ -6,6 +6,16 @@ You are wiring **billing UI** into a React (Vite / CRA) application that uses Th
 
 The billing surface ships from the **main entry** `@nebulr-group/bridge-react`. The only other entries are `/flags`, `/styles`, and the router adapters `/react-router` and `/tanstack-router` (which export `BridgeBillingRoutes` bound to that router). There is no `/billing` subpath.
 
+## The one rule for app code
+
+**Every gate in app code is a flag.** A link, a page, a button, an endpoint: if some people get it and others do not, the code asks a flag, and the flag's rule says why: a privilege (`privileges contains "USER_WRITE"`), a plan feature (`bridge:billing.entitlement.analytics eq true`) or a rollout. App code never reads a role, a privilege list, the plan or a plan feature to decide what someone may see or do.
+
+Two things are not gates and are not flags: **numbers** are plan limits (`<QuotaGate>` in the browser, `@RequireQuota` on the backend), and **permission on one specific record** stays in app code ("only the author edits their post").
+
+Before calling the work done, run `npx @nebulr-group/bridge-cli check gates` in the project. It lists every direct role, privilege, plan or plan-feature check with the flag to use instead. Fix each one.
+
+In React: a piece of UI is `<FeatureFlag flagKey="…">`; a page is a guard component built on `useFlag` (see the flags guide); a nav link is the same `<FeatureFlag>` around the link.
+
 **The rules this guide follows** (full version: `learning/mechanisms.md`):
 
 - One route serves every subscription page. Do not hand-write a subscription, success, cancel, `/billing` or `/payment-error` page.
@@ -27,14 +37,36 @@ Billing is not one component. Pick the rows that match what the app has to do; m
 | A live usage warning banner | `<BridgeQuotaBanner metric="…" />` | Silent below 80% of the cap, warning at 80–94%, critical at ≥95% |
 | To hide a feature the plan didn't buy | `<FeatureFlag flagKey="…" defaultValue={false} upgrade>` with the flag ruled `bridge:billing.entitlement.<key> eq true` | Shows the feature on plans that include it, an "Upgrade to use this" button elsewhere |
 
-And **entitlements are not feature flags.** Entitlements describe what the workspace *bought*; flags describe what you have *exposed*. Gating a paid feature with a flag leaves it on for everyone the moment the flag flips.
+**A feature a plan sells is still gated by a flag** — that is the last row above, and it does not contradict the one rule. The plan lists the feature (what the workspace *bought*); the flag's rule reads that list (`bridge:billing.entitlement.<key> eq true`), so the flag is on exactly for the workspaces whose plan includes it. The rule never names plans, so changing what a plan sells is one edit on the plan. See *Plan features* in Step 3.
+
+## Configuring plans, prices and quotas
+
+These can be configured from the Bridge **MCP tools** or the **`bridge` CLI**. Same operations, same API:
+
+| Operation | MCP | CLI |
+|---|---|---|
+| List plans (with prices + quotas) | `list_plans` | `bridge plan list` / `bridge plan get <key>` |
+| Create a plan | `create_plan` — `key`, `name`, `description?`, `trial?`, `trialDays?` | `bridge plan create --key … --name …` |
+| Edit a plan | `update_plan` — `key`, `name?`, `description?` | `bridge plan update --key … --name …` |
+| Add/replace a price | `set_plan_price` — `key`, `amount`, `interval`, `currency?` | `bridge plan price set <key> --amount … --interval …` |
+| Remove a price | `remove_plan_price` — `key`, `interval`, `currency?` | `bridge plan price rm <key> --interval …` |
+| Add/replace a quota | `set_plan_quota` — `key`, `metric`, `limit`, `policy`, `kind?`, `priceAmount?`, `priceCurrency?` | `bridge plan quota set <key> --metric … --limit … --policy … [--kind gauge]` |
+| Remove a quota | `remove_plan_quota` — `key`, `metric` | `bridge plan quota rm <key> --metric …` |
+| Sell an on/off feature on a plan | `add_plan_feature` | `bridge plan feature add <key> <feature> --name "…"` |
+| Stop selling it on a plan | `remove_plan_feature` | `bridge plan feature remove <key> <feature>` |
+
+Use whichever is already set up. **If the user asks for a specific surface, use that one** — both reach the same API. If neither is available, offer to install one; only fall back to the dashboard if they decline.
+
+**Counter or gauge?** If deleting it frees room, it's a gauge and your app counts it; if it happened, it's a counter and Bridge counts it. Projects, seats and documents are gauges (`kind: "gauge"` — "8 of 10 projects", never reset); AI completions, exports and API calls are counters (the default — "40 of 100 this month", reset each period). Every gauge value comes from your app, except seats.
+
+**Seats** are a plan limit the app names (`seats`), kind gauge, that Bridge counts from workspace membership, pending invites included: `bridge plan quota set <plan> --metric seats --limit N --policy hard --kind gauge --source membership` (MCP: `set_plan_quota` with `kind: "gauge"`, `source: "membership"`). There is no built-in `users` metric. Ask whether invites go through Bridge's built-in team page or the app's own invite handler. Built-in team page: `<TeamManagementPanel seatsMetric="seats" />`, and Invite stops at the limit. Own handler: `@RequireQuota('seats')` on it. Bridge's invite API does not refuse at the limit, so one of the two must be in place. Never gate seats with a flag or an entitlement: a seat count is a limit.
 
 ## Prerequisites
 
 Verify before starting:
 
 ```bash
-bridge plan list
+bridge plan list        # MCP: list_plans
 ```
 
 - At least one plan must be listed. If empty, run `bridge guide billing` (no `--framework`) first — the master prompt handles plan creation and Stripe setup, then comes back here.
@@ -165,7 +197,27 @@ const tickets = useQuota('tickets');
 
 `<BridgeQuotaBanner metric="…" />` is a ready-made warning banner on top of the same data (silent below 80%).
 
-Checking the plan directly without a flag — `<Entitled to="analytics">` or `useEntitlements().can('analytics')` — is the exception, for when the user explicitly wants no flag; it prints a one-time note in development.
+### Plan features — a flag ruled on the plan's list
+
+An on/off feature that some plans sell (analytics, SSO, AI) is two pieces: the plan lists it, and a flag reads that list. The flag's rule never names plans, so when Pro gains or loses the feature you change the plan and no rule has to follow.
+
+1. Put the feature on each plan that sells it: `bridge plan feature add pro analytics --name "Analytics"` (MCP: `add_plan_feature`).
+2. Create the flag with the rule `bridge:billing.entitlement.analytics eq true` (MCP: `create_feature_flag` with the same rule as a structured object):
+
+```bash
+bridge flag create --key analytics --value-type boolean --state on-with-rule \
+  --rule '{"branches":[{"conditions":[{"attribute":"bridge:billing.entitlement.analytics","operator":"eq","values":[true]}],"returnValue":true}],"otherwiseValue":false,"rolloutPct":100}'
+```
+
+3. Gate on the flag: `<FeatureFlag flagKey="analytics" defaultValue={false} upgrade>` around the markup (Level 1 above). For your own prompt, pass `fallback={(value, { reason, openUpgrade }) => …}` instead: `reason` is `'plan'` when an upgrade alone would turn it on. A whole page is a guard component built on `useFlag('analytics', false)`. On the backend, `@RequireFeatureFlag('analytics')` reads the same rule.
+
+The flag can later carry a rollout, a trial group or a one-customer exception without a code change — which a direct plan check cannot.
+
+**Never put a flag ruled on `bridge:billing.entitlement.tickets` around `<QuotaGate metric="tickets">`.** Every hard quota is also an entitlement of the same name, `false` at the cap — the flag would hide the button and the gate's upgrade line with it. Plan *features* (`analytics`, `sso`) are flags; *counted* things (`tickets`, `projects`) are `<QuotaGate>`.
+
+### Exceptions — checking the plan directly
+
+`<Entitled to="analytics">` and `useEntitlements().can('analytics')` read the plan's list with no flag in between. Use them only when the developer explicitly asks for no flag; in development they print a one-time note pointing at the flag rule. `can(key)` is fail-closed (`false` until Bridge has answered), and `<Entitled>` renders nothing, or its `loading` node, until then.
 
 ## Step 4 — Counting usage
 
@@ -191,6 +243,8 @@ Two reads, depending on the call site:
 
 Import all of them from `@nebulr-group/bridge-react`.
 
+**The billing screens stay current on their own.** `<PlanSelector>`, `<BridgeSubscriptionStatus>`, `<BridgeBillingNotice>` and the subscription pages re-read the plan list, the current plan and the billing state when the sign-in is renewed, when a live plan, subscription or payment event arrives, and when the tab regains focus more than 30 seconds after the last read. A plan created, changed or removed in Bridge appears without a reload. Do not add polling, a refresh button or a `useEffect` that calls `loadSubscription()` on an interval.
+
 ## What to expect in the dashboard
 
 Plans, prices, quotas, and entitlements are configured at **app.thebridge.dev** (Plans) — never in code. Paid plans require a connected Stripe account; Checkout and the customer portal are Stripe-hosted. Lifecycle changes (payment failed, trial ending, cancellation) flow back over the realtime channel and update the notice/quota UI live.
@@ -198,7 +252,7 @@ Plans, prices, quotas, and entitlements are configured at **app.thebridge.dev** 
 ## Standalone vs full-platform
 
 - **Full platform:** billing rides the same `<BridgeProvider>` as auth and flags — the signed-in tenant's plan drives entitlements and quotas automatically.
-- Billing UI assumes the user is authenticated (a tenant must exist to have a subscription). Set up **auth** first — see the auth guide. For feature gating, remember entitlements describe what the user *bought*; **feature flags** (see the flags guide) describe what's *exposed*.
+- Billing UI assumes the user is authenticated (a tenant must exist to have a subscription). Set up **auth** first — see the auth guide. For feature gating, the plan lists what the workspace *bought* and a **feature flag** ruled on that list (see the flags guide) decides what is shown.
 
 ## Billing checklist
 
@@ -210,6 +264,8 @@ Before verifying, confirm every item was applied:
 - [ ] `<BridgeBillingNotice />` added to the root layout
 - [ ] No quota `if`, "limit reached" toast or `/quota` endpoint of your own
 - [ ] Usage counted once: by the backend handler, or by `bridge.usage` only for browser-only actions
+- [ ] Plan features: on the plan (`bridge plan feature add`) and gated by a flag ruled `bridge:billing.entitlement.<key> eq true` — `<FeatureFlag>` or a `useFlag` guard, never a check of the plan in the page
+- [ ] `npx @nebulr-group/bridge-cli check gates` reports nothing
 - [ ] No extra packages installed (`@stripe/stripe-js` must NOT be in package.json)
 
 ## Verify

@@ -58,6 +58,7 @@ Last checked 2026-09-30 against bridge-svelte 0.9.0, bridge-react 0.8.0-beta.0 +
 | S2 `planCard` / `planDescription` / `planFooter` snippets | added (TBP-743) | Render props; `planCard` existed, now also gets `interval` |
 | `<BridgePaywall>` overlay, `<BridgeSubscriptionStatus>`, `<BridgeBillingNotice>`, `<BridgeQuotaBanner>` | present | |
 | `subscriptionStore` / `loadSubscription` | present | `useBridgeStore((s) => s.subscription)`, `useSubscription()`, `loadSubscription()` |
+| Billing refresh rule: re-read on sign-in renewal, live billing events and tab focus after 30 s; shared reads, one retry, no blanking (TBP-762) | added (0.9.1) | `core/billing-refresh.ts` + `core/billing-state.ts`, started by `<BridgeProvider>` |
 
 ## Plan limits and entitlements (levels 0/1/2)
 

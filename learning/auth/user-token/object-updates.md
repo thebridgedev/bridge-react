@@ -12,17 +12,23 @@ Once `<BridgeProvider>` connects, your app is subscribed to a live channel (a pe
 ## Example: a role change reaching your UI live
 
 ```tsx
-import { bridge, useBridgeReadable } from '@nebulr-group/bridge-react';
+import { bridge, useBridgeReadable, useFlag } from '@nebulr-group/bridge-react';
 
 function AdminArea() {
   const user = useBridgeReadable(bridge.user);
+  // Flag rule: privileges contains "USER_MANAGE"
+  const adminPanel = useFlag('admin_panel', false);
 
-  if (user?.role === 'ADMIN') return <AdminPanel />;
-  return <p>You don't have access to this area.</p>;
+  return (
+    <>
+      <p>Signed in as {user?.role}</p>
+      {adminPanel.value ? <AdminPanel /> : <p>You don't have access to this area.</p>}
+    </>
+  );
 }
 ```
 
-If an admin changes this user's role from `MEMBER` to `ADMIN` in Control Center (your admin dashboard at app.thebridge.dev), `user.role` updates on its own and `<AdminPanel />` appears without a refresh, because the component is driven by the reactive `bridge.user` readable rather than a value read once on mount. Structure your gated UI this way (branch on the live value, not a snapshot you captured earlier) and it stays correct automatically.
+If an admin changes this user's role from `MEMBER` to `ADMIN` in Control Center (your admin dashboard at app.thebridge.dev), `user.role` updates on its own and, when the new role grants `USER_MANAGE`, `<AdminPanel />` appears without a refresh, because the component is driven by the reactive `bridge.user` readable and the flag rather than a value read once on mount. Structure your gated UI this way (branch on the live value, not a snapshot you captured earlier) and it stays correct automatically.
 
 ## Reacting to the exact moment something changes
 

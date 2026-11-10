@@ -20,6 +20,7 @@
 import { useBridge as useBillingBridge } from '@nebulr-group/bridge-auth-core';
 import { getBridgeAuth } from './bridge-instance';
 import { applyEntitlementsChanged } from './snapshot-stores';
+import { refreshBillingState } from './billing-state';
 import { logger } from '../utils/logger';
 
 const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
@@ -182,21 +183,9 @@ async function readEntitlementsOnce(): Promise<void> {
  * `<BridgeSubscriptionStatus>` read). Never rejects.
  */
 export async function readBillingState(): Promise<void> {
-  try {
-    const ctx = getBridgeAuth().getApiContext();
-    if (!ctx.accessToken) return;
-    await useBillingBridge().subscription.mount(
-      {
-        apiBaseUrl: ctx.apiBaseUrl ?? DEFAULT_API_BASE_URL,
-        accessToken: ctx.accessToken,
-        appId: ctx.appId,
-        onTokenStale: tokenStaleHandler(),
-      },
-      logger,
-    );
-  } catch (err) {
-    logger.debug('[bridge-startup] billing state read skipped:', err);
-  }
+  // TBP-762 — through the billing store's single read: concurrent reads share
+  // one request, a re-read keeps the plan on screen, a failure is retried once.
+  await refreshBillingState();
 }
 
 /** Re-read what a new session is entitled to. Never rejects. */

@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.1] - 2026-11-10
+
+### Fixed
+
+- **Billing screens stay current without a reload.** The plan picker, the subscription badge, the billing notice and the subscription pages now re-read the plans and the current plan when the tab regains focus (more than 30 seconds after the last read), when the sign-in is renewed, and when a live plan, subscription or payment event arrives. A plan created, changed or removed in Bridge now appears without reloading the page. A background re-read never blanks what is on screen, a failed or empty read is tried once more, and an answer that arrives after signing out is dropped. (TBP-762)
+
+### Changed
+
+- **The agent guides follow "every gate is a flag".** The billing, flags and team guides open with the rule and end with `npx @nebulr-group/bridge-cli check gates`; the billing guide no longer says a paid feature should not be a flag, and no guide shows a role or plan check written into app code. (TBP-705)
+- **Seat limits are in the team and billing guides**, with `seatsMetric` on the built-in team page and the setup command. (TBP-763)
+- **The guides name the Bridge MCP tools** for plans and flags next to the CLI commands, and no longer tell agents to prefer the CLI. (TBP-576)
+- **The live-updates page explains why live updates are off**: the status reasons, whose side each one is on, and a link to the troubleshooting page. (TBP-642, TBP-675)
+- **A test now fails when a guide names something the package does not have**: an export, a component, a prop, a billing option or a `bridge.*` path.
+
+These bring the React package level with the Svelte package on billing refresh and the guides.
+
 ## [0.9.0] - 2026-11-10
 
 ### Changed

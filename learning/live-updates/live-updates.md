@@ -107,7 +107,7 @@ The `bridge:` namespace is reserved for Bridge-managed attributes; writes to it 
 
 ### Connection status
 
-The live channel's connection state is exposed as a hook from the flags entry point:
+The live channel's connection state is exposed as a hook, from the package root or the flags entry point:
 
 ```tsx
 import { useRealtimeStatus } from '@nebulr-group/bridge-react/flags';
@@ -121,6 +121,47 @@ function ConnectionBadge() {
 ```
 
 While the channel is down, everything keeps working from the last known state: flags evaluate from cache, readables hold their last snapshot. On reconnect the server re-sends a full `session.snapshot`, so every scope updates atomically and nothing is missed.
+
+### When live updates are off
+
+`useRealtimeStatus()` is just the state (`'idle'`, `'connecting'`, `'open'`, `'closed'`, `'unauthorized'`, `'degraded'`). `useRealtimeStatusDetail()` (or the `realtimeStatusDetail` readable, outside components) adds why:
+
+| Field | Meaning |
+|-------|---------|
+| `state` | Same value as `useRealtimeStatus()` |
+| `reason` | Machine-readable reason when live updates are not working, e.g. `expired` |
+| `side` | Whose move it is: `app` (your app's session/token handling), `config` (your Bridge settings — `apiBaseUrl`, `appId` or the app's configuration in Bridge — don't match), `bridge` (nothing to change in your app) or `network` (transient; the client is retrying) |
+| `retrying` | `true` while the client keeps trying on its own |
+| `docsUrl` | Troubleshooting page for this `reason` |
+| `ref` | Support reference for this run of trouble |
+
+Every `reason` has an entry in [Live Updates Troubleshooting](/live-updates/troubleshooting/): what it means, whose side it is on, and the exact fix. The console message, `docsUrl` and the dev badge all link straight to it.
+
+```tsx
+import { useRealtimeStatusDetail } from '@nebulr-group/bridge-react';
+
+function LiveUpdatesNotice() {
+  const detail = useRealtimeStatusDetail();
+  if (detail.state !== 'unauthorized') return null;
+  return (
+    <p>
+      Live updates are off ({detail.reason}). <a href={detail.docsUrl}>Why?</a>
+    </p>
+  );
+}
+```
+
+For side effects (logging, alerting) subscribe instead; it returns an unsubscribe function:
+
+```ts
+import { onBridgeRealtimeStatus } from '@nebulr-group/bridge-react';
+
+const stop = onBridgeRealtimeStatus((status) => {
+  if (status.reason) console.warn('live updates:', status.reason, status.side);
+});
+```
+
+**Dev badge.** In development builds, `<BridgeProvider>` mounts a small "Live updates off — why?" badge in the corner whenever live updates are refused (`unauthorized`), connected but receiving nothing (`degraded`), or still retrying after 30 seconds. It shows the reason, whose side it is, a docs link and the support reference, and can be dismissed until a different problem appears. It never renders in production builds. Turn it off in development too with `devBadge: false` in the `config` you pass to `<BridgeProvider>`. The badge is also exported as `RealtimeDevBadge`.
 
 ### Relationship to the classic hooks
 

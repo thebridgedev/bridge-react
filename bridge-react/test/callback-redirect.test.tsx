@@ -10,7 +10,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { CallbackHandler } from '../src/components/auth/CallbackHandler';
-import { _resetBridgeInstance, getBridgeAuth, initBridge } from '../src/core/bridge-instance';
+import { __setBillingRetryDelay, _resetBridgeInstance, getBridgeAuth, initBridge } from '../src/core/bridge-instance';
 import { resetRouterAdapter, setRouterAdapter } from '../src/utils/router-adapter';
 
 let replaceSpy: ReturnType<typeof mock>;
@@ -40,6 +40,7 @@ const HOSTILE: Array<[string, string]> = [
 describe('<CallbackHandler> Stripe return redirect stays on origin', () => {
   beforeEach(() => {
     _resetBridgeInstance();
+    __setBillingRetryDelay(0); // the fakes answer an empty plan list, which is retried once (TBP-762)
     initBridge({ appId: 'test-app' } as never);
     spies.push(
       spyOn(getBridgeAuth(), 'confirmStripeCheckout').mockImplementation((async () => undefined) as never),
