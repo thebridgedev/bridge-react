@@ -97,23 +97,21 @@ function ManagePlanLink() {
 }
 ```
 
-**Read an entitlement** to gate a feature on what the plan grants. In markup, subscribe to the reactive snapshot store so the gate re-evaluates when entitlements change:
+**Gate a feature the plan sells with a flag.** List the feature on the plans that sell it (`bridge plan feature add pro ai_completions`) and rule a flag `bridge:billing.entitlement.ai_completions eq true`; the page asks the flag, and it re-evaluates live when the plan changes:
 
 ```tsx
-import { bridge, useBridgeReadable } from '@nebulr-group/bridge-react';
+import { FeatureFlag } from '@nebulr-group/bridge-react';
 
 function AiSection() {
-  const entitlements = useBridgeReadable(bridge.tenant.entitlements.snapshot);
-
-  return entitlements?.ai_completions ? <AiPanel /> : null;
+  return (
+    <FeatureFlag flagKey="use_ai" defaultValue={false} upgrade>
+      <AiPanel />
+    </FeatureFlag>
+  );
 }
 ```
 
-For imperative checks outside markup (event handlers, route loaders), `can()` is the synchronous read. It is fail-closed (`false` until the snapshot lands) and **not reactive**, so don't call it directly in your JSX; the markup would never re-render when entitlements change:
-
-```ts
-if (bridge.tenant.entitlements.can('ai_completions')) { /* ... */ }
-```
+See [Lock features to a plan](/billing/limits/lock-features/) for the whole pattern. **Read quota numbers** with [`useQuota(metric)`](/billing/limits/usage-limits/#reading-quota-state-yourself).
 
 **For UI, prefer a drop-in component** over wiring your own; each reads the same live state:
 
