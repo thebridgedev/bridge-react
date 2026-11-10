@@ -22,7 +22,7 @@ import { cleanup, render } from '@testing-library/react';
 import { BridgeAuth } from '@nebulr-group/bridge-auth-core';
 import { BridgeProvider } from '../src/providers/bridge-provider';
 import { CallbackHandler } from '../src/components/auth/CallbackHandler';
-import { _resetBridgeInstance, confirmCheckout, initBridge } from '../src/core/bridge-instance';
+import { __setBillingRetryDelay, _resetBridgeInstance, confirmCheckout, initBridge } from '../src/core/bridge-instance';
 import { __resetBridgeRuntime } from '../src/core/bridge-runtime';
 import { resetRouterAdapter, setRouterAdapter } from '../src/utils/router-adapter';
 
@@ -87,6 +87,7 @@ async function until(cond: () => boolean, ms = 1000): Promise<void> {
 const navigations = () => replaceSpy.mock.calls.map((c) => c[0] as string);
 
 beforeEach(() => {
+  __setBillingRetryDelay(0); // the fakes answer an empty plan list, which is retried once (TBP-762)
   originalLocation = window.location;
   serverHasPayment = false;
   confirmRecordsPlan = true;

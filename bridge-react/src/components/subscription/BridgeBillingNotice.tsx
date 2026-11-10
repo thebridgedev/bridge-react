@@ -27,7 +27,7 @@ import {
 } from '@nebulr-group/bridge-auth-core';
 import { getBridgeAuth } from '../../core/bridge-instance';
 import { billingRoutes } from '../../core/billing-routes';
-import { tokenStaleHandler } from '../../core/bridge-runtime';
+import { ensureBillingState } from '../../core/billing-state';
 import { useBridgeSnapshot } from '../../hooks/use-bridge-readable';
 
 type Chassis = 'bar' | 'rail' | 'card';
@@ -80,16 +80,9 @@ export function BridgeBillingNotice({
       subscription.setError('Not authenticated');
       return;
     }
-    if (!subscription.snapshot().state) {
-      void subscription.mount({
-        apiBaseUrl: ctx.apiBaseUrl,
-        accessToken: ctx.accessToken,
-        appId: ctx.appId,
-        // TBP-762 — right after a checkout the sign-in is out of date; renew it
-        // and retry once instead of showing "Subscription unavailable".
-        onTokenStale: tokenStaleHandler(),
-      });
-    }
+    // TBP-762 — through the billing store: renews an out-of-date sign-in,
+    // retries once, and re-reads on the store's refresh rule.
+    void ensureBillingState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

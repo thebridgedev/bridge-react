@@ -10,15 +10,15 @@
  *
  * Reactive translation (§5.1): svelte `$state(useBridge().subscription.snapshot())`
  * + `onMount(() => subscription.subscribe(...))` → `useBridgeSnapshot(subscribe,
- * getSnapshot)`. The one-shot `mount()` fetch stays in a `useEffect`.
+ * getSnapshot)`. The read on mount (`ensureBillingState()`) stays in a `useEffect`.
  *
- * No live push in v1 — fetches once on mount (the realtime wiring lands with the
- * provider's `attachToRealtimeClient`).
+ * Live: auth-core patches the store on billing pushes, and the billing store's
+ * refresh rule (TBP-762) re-reads it on sign-in renewal, live billing events
+ * and tab focus.
  */
 import { useEffect } from 'react';
 import { useBridge } from '@nebulr-group/bridge-auth-core';
-import { getBridgeAuth } from '../../core/bridge-instance';
-import { tokenStaleHandler } from '../../core/bridge-runtime';
+import { ensureBillingState } from '../../core/billing-state';
 import { useBridgeSnapshot } from '../../hooks/use-bridge-readable';
 
 export interface BridgeSubscriptionStatusProps {
@@ -37,21 +37,10 @@ export function BridgeSubscriptionStatus({
   );
 
   useEffect(() => {
-    const ctx = getBridgeAuth().getApiContext();
-    if (!ctx.accessToken) {
-      subscription.setError('Not authenticated');
-      return;
-    }
-    void subscription.mount({
-      apiBaseUrl: ctx.apiBaseUrl,
-      accessToken: ctx.accessToken,
-      appId: ctx.appId,
-      // TBP-762 — right after a checkout the sign-in is out of date; renew it
-      // and retry once instead of showing "Subscription unavailable".
-      onTokenStale: tokenStaleHandler(),
-    });
-    // subscription is the auth-core singleton — stable across renders.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // TBP-762 — through the billing store: read unless a read younger than
+    // 30 s exists, renew an out-of-date sign-in, retry once, and stay current
+    // on the refresh rule (sign-in renewal, live billing events, tab focus).
+    void ensureBillingState();
   }, []);
 
   return (
