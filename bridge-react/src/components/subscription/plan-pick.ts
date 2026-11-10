@@ -6,7 +6,9 @@
 // the page passed `onSelect`: the person was left on the plan picker, looking
 // as if nothing had happened. It now goes on exactly like a paid pick does —
 // to `successRedirect`, where a Stripe checkout returns — unless the page took
-// over with `onSelect`. Every pick that changed the plan re-reads the billing
+// over with `onSelect`. TBP-945 (bridge-svelte TBP-813): it also records the
+// pick, so the landing page shows the same confirmation banner a checkout
+// gets. Every pick that changed the plan re-reads the billing
 // store (plan list, current plan, billing state) first, so the next page shows
 // the new plan.
 
@@ -39,6 +41,8 @@ export interface PlanPickDeps {
   navigate: (url: string) => unknown;
   /** Leave the app (Stripe checkout). */
   leave: (url: string) => void;
+  /** TBP-945 — record that the plan changed, for the landing page's banner. */
+  complete?: (plan: Plan) => void;
 }
 
 /** `selected`: the plan changed here. `confirm`: ask first. `checkout`: off to Stripe. */
@@ -90,5 +94,6 @@ async function settle(
     opts.onSelect({ plan, price });
     return;
   }
+  deps.complete?.(plan);
   await deps.navigate(opts.successRedirect);
 }

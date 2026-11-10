@@ -83,6 +83,21 @@ export {
   BillingPortalButton,
   type BillingPortalButtonProps,
 } from './components/subscription/BillingPortalButton';
+// TBP-945 (port of bridge-svelte TBP-813) — a completed checkout lands on
+// `billing.successRoute` (the subscription page by default); this banner, or
+// `useCheckoutResult()`, says so. Only the SDK marks the result.
+export {
+  BridgeCheckoutNotice,
+  type BridgeCheckoutNoticeProps,
+  type BridgeCheckoutNoticeContext,
+} from './components/subscription/BridgeCheckoutNotice';
+export {
+  useCheckoutResult,
+  getCheckoutResult,
+  takeCheckoutResult,
+  clearCheckoutResult,
+  type BridgeCheckoutResult,
+} from './core/checkout-result';
 export {
   BRIDGE_BILLING_PAGES,
   BRIDGE_BILLING_DEFAULTS,
