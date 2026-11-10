@@ -98,7 +98,8 @@ Set `loginRoute` and `<ProtectedRoute>` sends unauthenticated users to that in-a
 | `returnTo.exclude` | `(string \| RegExp)[]` | `[]` | Paths that must never become a return target. Your `loginRoute` is excluded automatically |
 | `billing.paywallRoute` | `string \| false` | `'/subscription/plan'` | Where a workspace (called a *tenant* in the API) with no plan is sent. The default applies only to an app that has plans; `false` turns the redirect off |
 | `billing.paymentErrorRoute` | `string` | `'/subscription/error'` | Where a failed Stripe checkout confirmation lands |
-| `billing.manageRoute` | `string` | `'/subscription'` | The subscription page — where Upgrade/Manage buttons and the upgrade dialog link. A completed checkout lands on `<manageRoute>/success` |
+| `billing.manageRoute` | `string` | `'/subscription'` | The subscription page, where Upgrade/Manage buttons and the upgrade dialog link. A completed checkout lands here unless `billing.successRoute` says otherwise |
+| `billing.successRoute` | `string` | `billing.manageRoute` | Where a completed checkout or a Free plan pick lands. The subscription page shows a confirmation banner; on any other page, render `<BridgeCheckoutNotice />` for it |
 | `billing.upgradeDialog` | `boolean \| Component` | `true` | The dialog `<BridgeProvider>` opens when your backend refuses at a plan limit (`402`). `false` turns it off; a component replaces it |
 | `billing.apiOrigins` | `string[]` | `[]` | Origins of your own backend when it is not on the page's origin, so a plain `fetch` refusal from it opens the upgrade dialog too |
 | `debug` | `boolean` | `false` | Enable debug logging |

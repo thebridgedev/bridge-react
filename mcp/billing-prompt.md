@@ -75,12 +75,14 @@ That one route is the whole subscription surface:
 
 | Address | Page | Config default it serves |
 |---|---|---|
-| `/subscription` | Current plan, "Manage billing" (`<BillingPortalButton>`), plan picker | `billing.manageRoute` |
+| `/subscription` | Current plan, "Manage billing" (`<BillingPortalButton>`), plan picker. A completed checkout or a Free pick lands here with a confirmation banner | `billing.manageRoute`; also `billing.successRoute` |
 | `/subscription/plan` | The paywall | `billing.paywallRoute` |
-| `/subscription/success` | Where a checkout or a free pick lands | `<manageRoute>/success` |
+| `/subscription/success` | An optional separate confirmation page; used only when `billing.successRoute` points at it | (none) |
 | `/subscription/error` | Where a failed checkout confirmation lands | `billing.paymentErrorRoute` |
 
-The plan picker loads plans cheapest first, shows interval tabs and each plan's features, selects a free plan directly, confirms before an instant switch, and launches Stripe Checkout for a paid plan. Stripe returns through Bridge's callback (served by `<BridgeAuthRoutes>` on `/auth/*`), which confirms the checkout and lands on `/subscription/success`.
+The plan picker loads plans cheapest first, shows interval tabs and each plan's features, selects a free plan directly, confirms before an instant switch, and launches Stripe Checkout for a paid plan. Stripe returns through Bridge's callback (served by `<BridgeAuthRoutes>` on `/auth/*`), which confirms the checkout and lands on `billing.successRoute` (the subscription page, which shows a confirmation banner).
+
+**Landing somewhere else after checkout.** If the developer wants users back in the app after paying, set `billing: { successRoute: '/dashboard' }` (their page) on `<BridgeProvider config>`. To confirm it there, render `<BridgeCheckoutNotice />` on that page or in the layout; it shows once, only right after a checkout. For custom copy, read `useCheckoutResult()` and call `clearCheckoutResult()` once the message has been seen. `<BridgeBillingRoutes checkoutNotice={false} />` hides the banner on the subscription page. Do not build a confirmation page by hand.
 
 To customise: `--bridge-*` tokens; then `frame(page, children)` / `heading(page)` on `<BridgeBillingRoutes>`; then take one page over by element, `pages={{ plan: <MyPricing /> }}`, building it from `<PlanSelector>` (render props `planCard`, `planDescription`, `planFooter`).
 
@@ -213,9 +215,9 @@ Before verifying, confirm every item was applied:
 ## Verify
 
 1. Open `/subscription` — plan cards render cheapest first; a tier with monthly + yearly pricing shows interval tabs.
-2. Select a free plan — the plan changes and you land on `/subscription/success`.
+2. Select a free plan: the plan changes and you land on `/subscription` with a "You're on … now" banner.
 3. Select a paid plan — Stripe Checkout launches.
-4. Complete payment — you land on `/subscription/success` with the new plan showing.
+4. Complete payment: you land on `/subscription` with the new plan showing and a "You're on … now" banner.
 5. Cancel payment — you are back on the page you picked from.
 6. Paywall: sign in as a new workspace with no plan — you are sent to `/subscription/plan` before the app renders.
 7. With a backend `@RequireQuota`: hit the cap — the upgrade dialog names the metric.

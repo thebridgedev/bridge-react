@@ -13,7 +13,7 @@ There are three ways to enforce the gate. The first needs no code.
 
 ## Method 1: the default paywall page
 
-With `<BridgeBillingRoutes>` mounted at `/subscription/*` (see [Add billing to your app](/billing/setup/add-billing-to-your-app/)), `<BridgeProvider>` sends a signed-in workspace with no plan to **`/subscription/plan`** as soon as it mounts. That page shows the plan picker; a completed checkout lands on `/subscription/success`.
+With `<BridgeBillingRoutes>` mounted at `/subscription/*` (see [Add billing to your app](/billing/setup/add-billing-to-your-app/)), `<BridgeProvider>` sends a signed-in workspace with no plan to **`/subscription/plan`** as soon as it mounts. That page shows the plan picker; a completed checkout lands on `/subscription` with a confirmation banner.
 
 The default applies only to an app that has plans: in an app without billing every workspace is plan-less, and nobody is redirected. It only redirects when all of the following hold, so there's no redirect loop and no gate on exempt workspaces:
 
@@ -45,7 +45,7 @@ import { BridgePaywallPage } from '@nebulr-group/bridge-react';
 |------|------|---------|-------------|
 | `heading` | `ReactNode` | `'Choose a plan'` | The page heading |
 | `children` | `ReactNode` | (none) | Content between the heading and the plans |
-| `successRedirect` | `string` | `<billing.manageRoute>/success` | Where a completed checkout lands |
+| `successRedirect` | `string` | `billing.successRoute`, else `'/subscription'` | Where a completed checkout lands |
 | `cancelRedirect` | `string` | this page | Where a cancelled checkout lands |
 | `onSelect` | `({ plan, price }) => void` | (none) | Called after a free-plan or direct plan change (not the Stripe redirect path) |
 
