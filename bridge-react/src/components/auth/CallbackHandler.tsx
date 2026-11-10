@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks/use-auth';
 import { confirmCheckout, getBridgeAuth, loadSubscription } from '../../core/bridge-instance';
 import { appUsesBilling, billingRoutes } from '../../core/billing-routes';
+import { markCheckoutComplete } from '../../core/checkout-result';
 import { getRouterAdapter } from '../../utils/router-adapter';
 import { sanitizeReturnTo, takeReturnTo } from '@nebulr-group/bridge-auth-core';
 
@@ -117,6 +118,10 @@ export function CallbackHandler({
           // (e.g. PlanSelector on /subscription) renders the now-active plan
           // instead of stale "select a plan" state.
           await loadSubscription().catch(() => {});
+          // TBP-945 (bridge-svelte TBP-813) — the landing page (the
+          // subscription page by default) says the checkout went through; no
+          // separate confirmation page.
+          markCheckoutComplete({ kind: 'checkout' });
           return await redirectAfterCheckout(stripeRedirectTo);
         }
         if (stripeCancel) {

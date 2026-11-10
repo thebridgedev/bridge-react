@@ -10,6 +10,13 @@
  *   - `planFooter({ plan, isCurrent })` renders at the bottom of the card;
  *   - `planCard({ plan, prices, isCurrent, interval, onPick })` replaces the
  *     whole card.
+ *
+ * TBP-945 (port of bridge-svelte TBP-813): the default card sits on a surface
+ * (`--bridge-card-bg`, `--bridge-card-shadow`) with a large formatted price,
+ * buttons that say "Choose / Upgrade to / Switch to", and the current plan
+ * marked in the primary colour. `heading` puts a title beside the
+ * Monthly/Yearly switch. A pick that changes the plan here records it, so the
+ * landing page shows `<BridgeCheckoutNotice>`.
  */
 import type { Plan, PriceOfferSdk } from '@nebulr-group/bridge-auth-core';
 import type { HTMLAttributes, ReactNode } from 'react';
@@ -24,6 +31,8 @@ import {
 import { refreshBilling } from '../../core/billing-refresh';
 import { getRouterAdapter } from '../../utils/router-adapter';
 import { pickPlan } from './plan-pick';
+import { formatAmount, intervalSuffix, minAmount, pickKind, pickLabel } from './plan-format';
+import { markCheckoutComplete } from '../../core/checkout-result';
 import { Alert } from './shared/Alert';
 import { Spinner } from './shared/Spinner';
 
@@ -42,6 +51,8 @@ export interface PlanCardContext {
 }
 
 export interface PlanSelectorProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onSelect'> {
+  /** A heading above the plans, beside the Monthly/Yearly switch (TBP-945). */
+  heading?: string;
   /** Where to send the user after a successful pick or checkout. @default '/subscription' */
   successRedirect?: string;
   /** Where to send the user after a cancelled Stripe checkout. @default '/subscription' */
@@ -77,11 +88,6 @@ const INTERVAL_LABELS: Record<BillingInterval, string> = {
 
 const INTERVAL_ORDER: BillingInterval[] = ['day', 'week', 'month', 'year'];
 
-function minAmount(plan: Plan): number {
-  const amounts = (plan.prices ?? []).map((p) => p.amount);
-  return amounts.length > 0 ? Math.min(...amounts) : Number.POSITIVE_INFINITY;
-}
-
 // The features the plan includes — the same list the upgrade dialog reads.
 // Structural: an older auth-core `Plan` type has no `features`.
 function planFeatures(plan: Plan): ReadonlyArray<{ key: string; name: string }> {
@@ -91,10 +97,28 @@ function planFeatures(plan: Plan): ReadonlyArray<{ key: string; name: string }> 
 function formatPrice(price: PriceOfferSdk): string {
   return price.amount === 0
     ? 'Free'
-    : `${price.amount} ${price.currency.toUpperCase()} / ${price.recurrenceInterval}`;
+    : `${formatAmount(price.amount, price.currency)} ${intervalSuffix(price)}`;
+}
+
+const FREE_PLACEHOLDER_PRICE = { id: '', amount: 0, currency: 'usd', recurrenceInterval: 'month' } as PriceOfferSdk;
+
+function CheckIcon() {
+  return (
+    <svg className="bridge-plan-feature-check" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M3 8.5l3.2 3L13 4.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export function PlanSelector({
+  heading,
   successRedirect = '/subscription',
   cancelRedirect = '/subscription',
   defaultInterval = 'year',
@@ -171,8 +195,8 @@ export function PlanSelector({
   // order stays put when the user toggles Monthly/Yearly.
   const sortedPlans = useMemo(() => [...(plans ?? [])].sort((a, b) => minAmount(a) - minAmount(b)), [plans]);
 
-  const currentPlanName =
-    (plans ?? []).find((p) => p.key === currentPlanKey)?.name ?? currentPlanKey ?? 'your current plan';
+  const currentPlan = (plans ?? []).find((p) => p.key === currentPlanKey) ?? null;
+  const currentPlanName = currentPlan?.name ?? currentPlanKey ?? 'your current plan';
 
   function showSuccess(message: string): void {
     setSuccessNotice(message);
@@ -224,6 +248,7 @@ export function PlanSelector({
           leave: (url) => {
             window.location.href = url;
           },
+          complete: (picked) => markCheckoutComplete({ kind: 'plan', planName: picked.name }),
         },
       );
       if (outcome === 'confirm') {
@@ -249,20 +274,37 @@ export function PlanSelector({
   function defaultCard(plan: Plan, isCurrent: boolean, onPick: (price: PriceOfferSdk) => void): ReactNode {
     const visiblePrices = pricesForInterval(plan);
     const features = planFeatures(plan);
+    const kind = pickKind(plan, currentPlan);
+    const label = pickLabel(kind, plan);
+    const buttonClass = `${kind === 'current' || kind === 'switch' ? 'bridge-btn-secondary' : 'bridge-btn-primary'} bridge-plan-select-btn`;
+    const shownPrice = visiblePrices[0];
     return (
       <div
         key={plan.key}
         data-bridge-plan-card
         data-current={isCurrent}
         data-trial={plan.trial}
+        data-pick={kind}
         className="bridge-plan-card"
       >
+        {isCurrent ? (
+          <span className="bridge-plan-current-flag" data-bridge-plan-current-flag>
+            Your plan
+          </span>
+        ) : null}
         <div className="bridge-plan-card-header">
           <h3 className="bridge-plan-name">{plan.name}</h3>
           {plan.trial && (plan.trialDays ?? 0) > 0 ? (
             <span className="bridge-plan-trial-badge">{plan.trialDays}-day trial</span>
           ) : null}
         </div>
+
+        {shownPrice ? (
+          <div className="bridge-plan-price" data-bridge-plan-price>
+            <span className="bridge-plan-price-amount">{formatAmount(shownPrice.amount, shownPrice.currency)}</span>
+            <span className="bridge-plan-price-interval">{intervalSuffix(shownPrice)}</span>
+          </div>
+        ) : null}
 
         {planDescription ? (
           planDescription({ plan, isCurrent })
@@ -274,7 +316,8 @@ export function PlanSelector({
           <ul className="bridge-plan-features" data-bridge-plan-features aria-label={`Included in ${plan.name}`}>
             {features.map((feature) => (
               <li key={feature.key} className="bridge-plan-feature" data-feature={feature.key}>
-                {feature.name}
+                <CheckIcon />
+                <span>{feature.name}</span>
               </li>
             ))}
           </ul>
@@ -285,28 +328,24 @@ export function PlanSelector({
             <button
               key={price.recurrenceInterval + price.currency}
               type="button"
-              className="bridge-btn-primary bridge-plan-select-btn"
+              className={buttonClass}
               disabled={isCurrent || picking}
               onClick={() => onPick(price)}
             >
-              {isCurrent
-                ? 'Current plan'
-                : price.amount === 0
-                  ? 'Select free plan'
-                  : `${price.amount} ${price.currency.toUpperCase()} / ${price.recurrenceInterval}`}
+              {visiblePrices.length > 1 && !isCurrent
+                ? `${label} · ${formatAmount(price.amount, price.currency)}`
+                : label}
             </button>
           ))}
 
           {plan.prices.length === 0 ? (
             <button
               type="button"
-              className="bridge-btn-primary bridge-plan-select-btn"
+              className={buttonClass}
               disabled={isCurrent || picking}
-              onClick={() =>
-                handlePick(plan, { id: '', amount: 0, currency: 'usd', recurrenceInterval: 'month' } as PriceOfferSdk)
-              }
+              onClick={() => handlePick(plan, FREE_PLACEHOLDER_PRICE)}
             >
-              {isCurrent ? 'Current plan' : 'Select plan'}
+              {label}
             </button>
           ) : visiblePrices.length === 0 ? (
             <p className="bridge-plan-unavailable" data-bridge-plan-unavailable>
@@ -319,6 +358,28 @@ export function PlanSelector({
       </div>
     );
   }
+
+  const intervalTabs = (
+    <div
+      className="bridge-plan-interval-tabs"
+      data-bridge-plan-interval-tabs
+      role="group"
+      aria-label="Billing interval"
+    >
+      {availableIntervals.map((interval) => (
+        <button
+          key={interval}
+          type="button"
+          className="bridge-plan-interval-tab"
+          data-active={interval === selectedInterval}
+          aria-pressed={interval === selectedInterval}
+          onClick={() => setIntervalOverride(interval)}
+        >
+          {INTERVAL_LABELS[interval]}
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div
@@ -367,26 +428,13 @@ export function PlanSelector({
             ))
           ) : plans ? (
             <>
-              {showIntervalTabs ? (
-                <div
-                  className="bridge-plan-interval-tabs"
-                  data-bridge-plan-interval-tabs
-                  role="group"
-                  aria-label="Billing interval"
-                >
-                  {availableIntervals.map((interval) => (
-                    <button
-                      key={interval}
-                      type="button"
-                      className="bridge-plan-interval-tab"
-                      data-active={interval === selectedInterval}
-                      aria-pressed={interval === selectedInterval}
-                      onClick={() => setIntervalOverride(interval)}
-                    >
-                      {INTERVAL_LABELS[interval]}
-                    </button>
-                  ))}
+              {heading ? (
+                <div className="bridge-plan-head" data-bridge-plan-head>
+                  <h2 className="bridge-plan-heading">{heading}</h2>
+                  {showIntervalTabs ? intervalTabs : null}
                 </div>
+              ) : showIntervalTabs ? (
+                intervalTabs
               ) : null}
 
               <div className="bridge-plan-cards" data-bridge-plan-cards>
@@ -426,7 +474,7 @@ export function PlanSelector({
               {formatPrice(confirmTarget.price)}).
             </p>
             <p className="bridge-plan-confirm-note">
-              The change takes effect immediately — any price difference is prorated on your next invoice.
+              The change takes effect immediately. Any price difference is prorated on your next invoice.
             </p>
             {confirmError ? <Alert variant="error">{confirmError}</Alert> : null}
             <div className="bridge-plan-confirm-actions">

@@ -2,7 +2,7 @@
 
 This is the self-service billing page most apps need: one place where a user picks their first plan, upgrades, downgrades, or switches billing interval. `<PlanSelector>` is the whole thing in one component. Unlike [`<BridgePaywall>`](/billing/onboarding/require-plan/), which *forces* a choice before the app loads, this is the always-available page a user visits when they choose to.
 
-With `<BridgeBillingRoutes>` mounted at `/subscription/*` (see [Add billing to your app](/billing/setup/add-billing-to-your-app/)), `/subscription` already is that page: the current plan, "Manage billing" and the picker. To customise the picker there, take the page over by element — `<BridgeBillingRoutes pages={{ manage: <MySubscriptionPage /> }} />` — and render `<PlanSelector>` inside it.
+With `<BridgeBillingRoutes>` mounted at `/subscription/*` (see [Add billing to your app](/billing/setup/add-billing-to-your-app/)), `/subscription` already is that page: the current plan, "Manage billing" and the picker. To customise the picker there, take the page over by element (`<BridgeBillingRoutes pages={{ manage: <MySubscriptionPage /> }} />`) and render `<PlanSelector>` inside it. A completed checkout lands back on `/subscription` with a confirmation banner, and so does a cancelled one (without the banner).
 
 `<PlanSelector>` loads the plans and the status of the current workspace (called a *tenant* in the API) automatically, renders plan cards, and handles free plan selection, Stripe Checkout, and plan changes.
 
@@ -11,7 +11,7 @@ With `<BridgeBillingRoutes>` mounted at `/subscription/*` (see [Add billing to y
 import { PlanSelector } from '@nebulr-group/bridge-react';
 
 export default function SubscriptionPage() {
-  return <PlanSelector successRedirect="/subscription/success" cancelRedirect="/subscription" />;
+  return <PlanSelector successRedirect="/subscription" cancelRedirect="/subscription" />;
 }
 ```
 
@@ -28,7 +28,8 @@ What it does for you:
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `successRedirect` | `string` | `'/subscription'` | In-app route to land on after successful payment |
+| `heading` | `string` | (none) | A heading above the plans, beside the Monthly/Yearly switch |
+| `successRedirect` | `string` | `'/subscription'` | In-app route to land on after successful payment. Render `<BridgeCheckoutNotice />` there to confirm it |
 | `cancelRedirect` | `string` | `'/subscription'` | In-app route to land on if the user cancels checkout |
 | `defaultInterval` | `'day' \| 'week' \| 'month' \| 'year'` | `'year'` | The interval tab selected at first |
 | `onSelect` | `({ plan, price }) => void` | (none) | Called after a free plan is selected or a plan change completes. When given, the picker stays on the page instead of going to `successRedirect` |
@@ -53,7 +54,7 @@ Change only the description, or add a line under the buttons, and keep the rest 
 
 **Custom plan card:**
 
-The default plan cards are intentionally plain. If you want them to match your product's design, pass a **`planCard` render prop** and render the cards yourself. You get the plan data and a ready-made pick handler, and Bridge still owns the free-select / checkout / change branching. You only write markup; you never touch the SDK. Here's an example:
+The default plan cards follow your `--bridge-*` tokens (see [Theming](/theming/)). If you want a different card altogether, pass a **`planCard` render prop** and render the cards yourself. You get the plan data and a ready-made pick handler, and Bridge still owns the free-select / checkout / change branching. You only write markup; you never touch the SDK. Here's an example:
 
 ```tsx
 import { PlanSelector } from '@nebulr-group/bridge-react';
@@ -61,7 +62,7 @@ import { PlanSelector } from '@nebulr-group/bridge-react';
 export default function SubscriptionPage() {
   return (
     <PlanSelector
-      successRedirect="/subscription/success"
+      successRedirect="/subscription"
       cancelRedirect="/subscription"
       planCard={({ plan, prices, isCurrent, onPick }) => (
         <div className={isCurrent ? 'plan-card current' : 'plan-card'}>

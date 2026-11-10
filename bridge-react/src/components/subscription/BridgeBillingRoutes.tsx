@@ -11,9 +11,10 @@
  *   createRoute({ getParentRoute: () => rootRoute, path: 'subscription/$', component: BridgeBillingRoutes })
  *
  * Serves, relative to wherever it is mounted:
- *   /subscription          the current plan, the plan picker and "Manage billing"
+ *   /subscription          the current plan, the plan picker and "Manage billing";
+ *                          a completed checkout lands here, with a banner
  *   /subscription/plan     the paywall: where a plan-less workspace is sent
- *   /subscription/success  where a completed checkout lands
+ *   /subscription/success  the old confirmation page, for `billing.successRoute`
  *   /subscription/error    where a failed checkout confirmation lands
  *
  * Those are the defaults of `billing.manageRoute`, `billing.paywallRoute` and
@@ -27,9 +28,15 @@
  *        <BridgeBillingRoutes pages={{ plan: <MyPricing /> }} />
  *   4. Headless: `PlanSelector`, `BridgeSubscriptionStatus`,
  *      `BillingPortalButton` and `useSubscription()` are the pieces.
+ *
+ * TBP-945 (port of bridge-svelte TBP-813) — a paid checkout and a Free pick
+ * land on `billing.successRoute`, by default this route's own subscription
+ * page, which shows `<BridgeCheckoutNotice>`. Set `billing.successRoute` to
+ * land anywhere else.
  */
 import { useEffect, type ReactNode } from 'react';
 import { ensureSubscription, loadSubscription } from '../../core/bridge-instance';
+import { clearCheckoutResult } from '../../core/checkout-result';
 import { parseBridgeBillingRoute, type BridgeBillingPage } from '../../core/billing-routes';
 import { bridgeAuthBase } from '../../core/auth-routes';
 import { useWindowRouteLocation, type BridgeRouteLocation } from '../../routing/location';
@@ -37,6 +44,9 @@ import { billingRoutes } from '../../core/billing-routes';
 import { PlanSelector } from './PlanSelector';
 import { BridgeSubscriptionStatus } from './BridgeSubscriptionStatus';
 import { BillingPortalButton } from './BillingPortalButton';
+import { BridgeCheckoutNotice } from './BridgeCheckoutNotice';
+import { subscriptionMeta } from './plan-format';
+import { useBillingSnapshot } from './use-billing-snapshot';
 
 export type { BridgeBillingPage };
 
@@ -51,6 +61,9 @@ export interface BridgeBillingRoutesProps {
   notFound?: ReactNode;
   /** Where "Continue" on the success page goes. @default '/' */
   redirectTo?: string;
+  /** The "you're on Pro now" banner on the subscription page after a
+   *  checkout. `false` hides it. @default true */
+  checkoutNotice?: boolean;
   /** The mount point when no router adapter supplies the location. @default billing.manageRoute */
   base?: string;
   /** The current location, from a router adapter. */
@@ -75,6 +88,7 @@ function BillingRoutesBody({
   pages,
   notFound,
   redirectTo = '/',
+  checkoutNotice = true,
   location,
 }: BridgeBillingRoutesProps & { location: BridgeRouteLocation }) {
   const rest = location.rest;
@@ -83,12 +97,20 @@ function BillingRoutesBody({
   const base = bridgeAuthBase(location.pathname, rest) || '/';
   const at = (sub: string) => (base === '/' ? `/${sub}` : `${base}/${sub}`);
   const page = route?.page;
+  // TBP-945 — a checkout lands on `billing.successRoute`; by default on this
+  // route's own subscription page, wherever it is mounted.
+  const routes = billingRoutes();
+  const successTarget = routes.successIsDefault ? base : routes.successRoute;
+  // The current plan's renewal date and card, for the line under its name.
+  const meta = subscriptionMeta(useBillingSnapshot()?.state);
 
   // Every page reads the subscription, reusing a read younger than 30 s. The
   // success page always re-reads: the checkout just changed it.
   useEffect(() => {
     if (!page) return;
     void (page === 'success' ? loadSubscription() : ensureSubscription());
+    // The old confirmation page says it all; no banner on the next page too.
+    if (page === 'success') clearCheckoutResult();
   }, [page]);
 
   if (!route || !page) {
@@ -110,20 +132,29 @@ function BillingRoutesBody({
 
   const content = (
     <>
+      {page === 'manage' && checkoutNotice ? <BridgeCheckoutNotice /> : null}
       {heading ? heading(page) : <h1 className="bridge-billing-heading">{DEFAULT_HEADINGS[page]}</h1>}
       {page === 'manage' ? (
         <>
-          <div className="bridge-billing-current">
-            <span className="bridge-billing-label">Current plan</span>
-            <BridgeSubscriptionStatus />
+          <p className="bridge-billing-text">Your plan, what it includes, and billing.</p>
+          <div className="bridge-billing-summary" data-bridge-billing-summary>
+            <div className="bridge-billing-summary-plan">
+              <span className="bridge-billing-label">Current plan</span>
+              <BridgeSubscriptionStatus className="bridge-billing-summary-status" />
+              {meta ? (
+                <span className="bridge-billing-summary-meta" data-bridge-billing-meta>
+                  {meta}
+                </span>
+              ) : null}
+            </div>
             <BillingPortalButton />
           </div>
-          <PlanSelector successRedirect={at('success')} cancelRedirect={base} />
+          <PlanSelector heading="Change plan" successRedirect={successTarget} cancelRedirect={base} />
         </>
       ) : page === 'plan' ? (
         <>
           <p className="bridge-billing-text">Pick a plan to start using the app.</p>
-          <PlanSelector successRedirect={at('success')} cancelRedirect={at('plan')} />
+          <PlanSelector successRedirect={successTarget} cancelRedirect={at('plan')} />
         </>
       ) : page === 'success' ? (
         <>

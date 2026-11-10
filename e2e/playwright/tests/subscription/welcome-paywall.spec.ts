@@ -208,15 +208,17 @@ test.describe('Welcome Paywall — first-time user flow', () => {
         (url) => !url.hostname.includes('stripe.com'),
         { timeout: 60_000 } // Stripe processing can take a while
       );
-      // TBP-743 — a completed checkout lands on the success page
-      // (the paywall's default successRedirect, /subscription/success), which
-      // re-reads the subscription and names the plan just bought.
-      await page.waitForURL('**/subscription/success', { timeout: LONG_TIMEOUT });
-      const success = page.locator('[data-bridge-billing-route="success"]');
-      await expect(success.getByRole('heading', { name: "You're all set" })).toBeVisible({
-        timeout: MED_TIMEOUT,
-      });
-      await expect(success.locator('.bss-plan')).toHaveText(PAYWALL_PLAN.definition.name, {
+      // TBP-945 (bridge-svelte TBP-813) — a completed checkout lands on the
+      // paywall's default successRedirect: billing.successRoute, else the
+      // subscription page (it was /subscription/success before), which says the
+      // checkout went through and shows the plan just bought.
+      const manage = page.locator('[data-bridge-billing-route="manage"]');
+      await expect(manage).toBeVisible({ timeout: LONG_TIMEOUT });
+      expect(new URL(page.url()).pathname).toBe('/subscription');
+      const notice = manage.locator('[data-bridge-checkout-notice]');
+      await expect(notice).toBeVisible({ timeout: LONG_TIMEOUT });
+      await expect(notice).toHaveAttribute('data-kind', 'checkout');
+      await expect(manage.locator('.bss-plan')).toHaveText(PAYWALL_PLAN.definition.name, {
         timeout: LONG_TIMEOUT,
       });
 

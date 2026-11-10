@@ -39,7 +39,7 @@ function PlanSummary() {
 
 ## Mount the subscription pages
 
-One route serves the subscription page, the paywall and both pages a Stripe checkout returns to. With React Router:
+One route serves the subscription page, the paywall and the pages a Stripe checkout returns to. With React Router:
 
 ```tsx
 // src/App.tsx
@@ -55,9 +55,9 @@ With TanStack Router, import it from `@nebulr-group/bridge-react/tanstack-router
 
 | Address | Page |
 |---------|------|
-| `/subscription` | The current plan, "Manage billing" and the plan picker |
+| `/subscription` | The current plan, "Manage billing" and the plan picker. A completed checkout (or a Free pick) lands here, with a confirmation banner |
 | `/subscription/plan` | The paywall: where a workspace with no plan is sent |
-| `/subscription/success` | Where a completed checkout (or a free pick) lands |
+| `/subscription/success` | A separate confirmation page, for apps that set `billing.successRoute` to it |
 | `/subscription/error` | Where a failed checkout confirmation lands |
 
 Those addresses are the defaults of the `billing` settings on `<BridgeProvider config>`, so nothing Bridge redirects to is a 404:
@@ -67,8 +67,46 @@ Those addresses are the defaults of the `billing` settings on `<BridgeProvider c
 | `billing.manageRoute` | `'/subscription'` | Where Upgrade/Manage buttons and the upgrade dialog link |
 | `billing.paywallRoute` | `'/subscription/plan'` | Where a signed-in workspace with no plan is redirected **as soon as the provider mounts**. The default applies only when the app has plans; `false` turns the redirect off. Workspaces that opt out via `paymentsAutoRedirect: false` are exempt |
 | `billing.paymentErrorRoute` | `'/subscription/error'` | Where Bridge sends the user if a Stripe checkout confirmation fails on the return trip |
+| `billing.successRoute` | `'/subscription'` | Where a completed checkout or a Free plan pick lands |
 
 Set one only to move it, e.g. `billing: { paywallRoute: '/welcome' }` for an onboarding page of your own (see [Require a plan](/billing/onboarding/require-plan/)). To restyle or take over a page, pass `frame`, `heading` or `pages={{ plan: <MyPricing /> }}` — the same props as the sign-in pages.
+
+### Where a checkout lands
+
+After a paid checkout, or a Free plan pick, the user comes back to the
+subscription page, which shows a "You're on Pro now" banner. There is no
+separate confirmation step. To send them somewhere else, set
+`billing.successRoute` on `<BridgeProvider config>`:
+
+```tsx
+<BridgeProvider config={{ billing: { successRoute: '/dashboard' } }}>
+```
+
+To show the same banner there, put `<BridgeCheckoutNotice />` on that page or
+in your layout. It renders nothing until a checkout has just completed, shows
+once, and is gone after a reload. For a message of your own, read
+`useCheckoutResult()` instead:
+
+```tsx
+import { useCheckoutResult, clearCheckoutResult } from '@nebulr-group/bridge-react';
+
+function UpgradeThanks() {
+  const result = useCheckoutResult();
+  if (!result) return null;
+  return (
+    <p>
+      Thanks for upgrading! <button onClick={clearCheckoutResult}>OK</button>
+    </p>
+  );
+}
+```
+
+`result.kind` is `'checkout'` after a paid checkout and `'plan'` after a Free
+pick. Reading it does not clear it: call `clearCheckoutResult()` once your
+message has been seen, or `takeCheckoutResult()` to read and clear in one go.
+To hide the banner on the subscription page itself, pass
+`<BridgeBillingRoutes checkoutNotice={false} />`. The old confirmation page is
+still served: `successRoute: '/subscription/success'` brings it back.
 
 ## Adding billing to your UI
 

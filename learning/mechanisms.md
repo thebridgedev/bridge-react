@@ -233,7 +233,7 @@ The same ladder holds for the sign-in pages (`<BridgeAuthRoutes>`) and the subsc
 | Rung | What you do | What you own |
 |---|---|---|
 | **0 — nothing** | Bridge's pages render inside your own layout | Your navigation, header and shell already surround them |
-| **1 — tokens** | Set `--bridge-*` CSS variables in your CSS | Colours, radius, spacing |
+| **1 — tokens** | Set `--bridge-*` CSS variables in your CSS, and plain CSS for anything else | Colours, radius, spacing, weights, shadows |
 | **2 — frame and heading** | Pass the `frame(page, children)` and `heading(page)` render props | Everything around the form on every page, and each page's heading |
 | **3 — take over one page** | Pass an element for that page: `pages={{ login: <MyLogin /> }}` | That one page; every other page keeps working |
 | **4 — headless** | Build your own UI on `getBridgeAuth()` | Everything |
@@ -256,7 +256,7 @@ The same ladder holds for the sign-in pages (`<BridgeAuthRoutes>`) and the subsc
 
 `heading` replaces only each page's main step (the login credentials step, the signup form, the set-password form); sub-steps such as "Check your email" keep their own, so two headings never stack. There are no per-page render props: to change more than frame and heading, take the page over (rung 3). A sign-in page you own navigates itself after sign-in: `<LoginForm onLogin={() => navigate(readReturnTo(location.search) ?? '/')} />`. `<BridgeBillingRoutes>` takes the same `frame`, `heading` and `pages` props (pages `manage`, `plan`, `success`, `error`). Both take `notFound` for an address under the mount point that names no page, and `redirectTo` (default `/`) for where a completed sign-in, or "Continue" on the success page, goes.
 
-**The token contract (rung 1).** These `--bridge-*` variables are the supported way to restyle every Bridge page and component. Set them in your own stylesheet on `:root`, or on a wrapper to theme one area. The plugin declares its defaults on `:where(:root)`, which has zero specificity, so your `:root` wins whichever stylesheet loads first.
+**The token contract (rung 1).** These `--bridge-*` variables are the supported way to restyle every Bridge page and component. Set them in your own stylesheet on `:root`, or on a wrapper to theme one area. Set only what your app does not already give: Bridge inherits your font and text colour, and every Bridge text size follows your `<body>` text size. All Bridge styles sit in a CSS cascade layer named `bridge`, so your `:root` wins whichever stylesheet loads first, and any plain CSS you write outside a layer overrides Bridge's classes and data attributes with no `!important`.
 
 | Token | Default | Styles |
 |---|---|---|
@@ -271,6 +271,13 @@ The same ladder holds for the sign-in pages (`<BridgeAuthRoutes>`) and the subsc
 | `--bridge-muted-bg` | `#f3f4f6` | Subtle fills: tab tracks, hovers, the MFA backup code |
 | `--bridge-border` | `#d1d5db` | Input, table, card and secondary button borders |
 | `--bridge-border-radius` | `6px` | Corners of inputs, buttons, alerts, cards and dialogs |
+| `--bridge-card-bg` | `--bridge-bg` | Plan cards and the current-plan panel on the subscription page |
+| `--bridge-card-shadow` | a soft 1–3px shadow | Plan cards, the current-plan panel and the plan-change dialog. `none` for a flat look |
+| `--bridge-button-shadow` | `none` | Every Bridge button's shadow, e.g. `4px 4px 0 #111` |
+| `--bridge-font-size` | your `<body>` text size | The base every Bridge text size scales from |
+| `--bridge-font-weight-heading` | `600` (`700` on a few titles) | Page, dialog and section titles, plan names, prices |
+| `--bridge-font-weight-button` | `500` | Every Bridge button |
+| `--bridge-font-weight-label` | `500` (`600` on a few) | Form labels, table headings, badges, names |
 | `--bridge-overlay` | `rgba(15, 23, 42, 0.45)` | Backdrop behind dialogs |
 | `--bridge-alert-error-{bg,fg,border}` | `#fef2f2` / `#991b1b` / `#fca5a5` | Errors, critical billing notices, cancelled plan badge |
 | `--bridge-alert-success-{bg,fg,border}` | `#f0fdf4` / `#166534` / `#86efac` | Confirmations, active plan badge |
@@ -282,12 +289,12 @@ The same ladder holds for the sign-in pages (`<BridgeAuthRoutes>`) and the subsc
 | `--bridge-paywall-bg` | `rgba(15, 23, 42, 0.72)` | Backdrop of the `<BridgePaywall>` overlay and the billing lockscreen |
 | `--bridge-paywall-panel-bg` | `--bridge-bg` | Panel of the `<BridgePaywall>` overlay |
 
-The derived tokens (hover, light, focus) follow `--bridge-primary` wherever you set it, unless you set them too. Two older names still work as deprecated aliases: `--bridge-primary-foreground` for `--bridge-primary-fg`, and `--bridge-bg-muted` for `--bridge-muted-bg`. Fonts and body text colour are not tokens: Bridge pages render inside your layout and inherit them. With Tailwind, point the tokens at your theme (see [theming](/theming/)). Leaving out `import '@nebulr-group/bridge-react/styles'` makes the components headless: plain HTML for you to style.
+The derived tokens (hover, light, focus) follow `--bridge-primary` wherever you set it, unless you set them too. Two older names still work as deprecated aliases: `--bridge-primary-foreground` for `--bridge-primary-fg`, and `--bridge-bg-muted` for `--bridge-muted-bg`. Font family and text colour are not tokens: Bridge pages render inside your layout and inherit them. With Tailwind, point the tokens at your theme (see [theming](/theming/)). Leaving out `import '@nebulr-group/bridge-react/styles'` makes the components headless: plain HTML for you to style.
 
 ## 7. Pages Bridge serves, and the one it only offers
 
 - **Sign-in:** `<BridgeAuthRoutes>` on `/auth/*` serves login, signup, the OAuth callback, set password (where signup verification and password-reset emails land), forgot password, magic link, passkey setup and workspace selection. Which methods appear comes from the app's settings at runtime, so turning magic links on needs no code. Hosted and in-app sign-in use the same route; `loginRoute: '/auth/login'` in `<BridgeProvider config>` is the whole switch to in-app. Without it the pages point at Bridge's hosted login.
-- **Subscription:** `<BridgeBillingRoutes>` on `/subscription/*` serves `/subscription`, the paywall `/subscription/plan`, and the checkout return pages `/subscription/success` and `/subscription/error`. Bridge's redirects and upgrade links point there by default (`billing.manageRoute`, `billing.paywallRoute`, `billing.paymentErrorRoute`).
+- **Subscription:** `<BridgeBillingRoutes>` on `/subscription/*` serves `/subscription`, the paywall `/subscription/plan`, and the checkout return pages `/subscription/success` and `/subscription/error`. Bridge's redirects and upgrade links point there by default (`billing.manageRoute`, `billing.paywallRoute`, `billing.paymentErrorRoute`). A completed checkout lands back on `/subscription` with a confirmation banner (`<BridgeCheckoutNotice>`); `billing.successRoute` moves it anywhere in the app.
 - **The paywall** redirects a signed-in workspace with no plan to `/subscription/plan` — only when the app has plans and its `paymentsAutoRedirect` setting is on (the default). `billing: { paywallRoute: false }` turns the redirect off; `bridge app update --payments-auto-redirect false` turns it off for the app.
 - **A `/welcome` onboarding page is offered, never created unasked.** It is a product decision: ask the developer. Only if they say yes, add a route rendering `<BridgePaywallPage />` and `billing: { paywallRoute: '/welcome' }` in `<BridgeProvider config>`.
 - Any other address under a mount point gets the `notFound` element (a short "Page not found." by default).

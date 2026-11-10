@@ -105,13 +105,17 @@ describe('billing routes', () => {
       paywallRoute: '/subscription/plan',
       paywallIsDefault: true,
       paymentErrorRoute: '/subscription/error',
-      successRoute: '/subscription/success',
+      // TBP-945 — a checkout lands on the subscription page, which shows the banner.
+      successRoute: '/subscription',
+      successIsDefault: true,
     });
   });
 
   it('a configured route wins; paywallRoute: false turns the paywall off', () => {
     const r = resolveBillingRoutes({ manageRoute: '/plans', paywallRoute: '/welcome' });
-    expect(r.successRoute).toBe('/plans/success');
+    // With no successRoute, a checkout lands on manageRoute.
+    expect(r.successRoute).toBe('/plans');
+    expect(r.successIsDefault).toBe(true);
     expect(r.paywallRoute).toBe('/welcome');
     expect(r.paywallIsDefault).toBe(false);
     expect(resolveBillingRoutes({ paywallRoute: false }).paywallRoute).toBeNull();
@@ -212,13 +216,16 @@ describe('<PlanSelector> — S2 plan-card render props and svelte parity', () =>
     expect(names).toEqual(['Free', 'Pro']);
     expect(container.querySelector('[data-feature="analytics"]')?.textContent).toBe('Analytics');
     const priceText = () => Array.from(container.querySelectorAll('.bridge-plan-select-btn')).map((b) => b.textContent);
-    // Yearly is the default tab.
-    expect(priceText()).toContain('200 USD / year');
+    const priceBlock = () =>
+      Array.from(container.querySelectorAll('[data-bridge-plan-price]')).map((b) => b.textContent);
+    // Yearly is the default tab. TBP-945: the price is a block on the card; the button says what a pick does.
+    expect(priceBlock()).toContain('$200/ year');
+    expect(priceText()).toContain('Choose Pro');
     const monthly = Array.from(container.querySelectorAll('.bridge-plan-interval-tab')).find((b) => b.textContent === 'Monthly')!;
     fireEvent.click(monthly);
-    expect(priceText()).toContain('20 USD / month');
+    expect(priceBlock()).toContain('$20/ month');
     // The free plan stays selectable under every tab.
-    expect(priceText()).toContain('Select free plan');
+    expect(priceText()).toContain('Choose Free');
   });
 
   it('planCard receives the active interval', async () => {
@@ -242,11 +249,11 @@ describe('<PlanSelector> — S2 plan-card render props and svelte parity', () =>
     spies.push(
       spyOn(BridgeAuth.prototype as never, 'selectFreePlan' as never).mockImplementation((async () => undefined) as never),
     );
-    const { container } = render(<PlanSelector successRedirect="/subscription/success" />);
+    const { container } = render(<PlanSelector successRedirect="/subscription" />);
     await cards(container);
-    const free = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Select free plan')!;
+    const free = Array.from(container.querySelectorAll('button')).find((b) => b.textContent === 'Choose Free')!;
     fireEvent.click(free);
-    await waitFor(() => expect(navigations).toEqual(['/subscription/success']));
+    await waitFor(() => expect(navigations).toEqual(['/subscription']));
   });
 });
 
