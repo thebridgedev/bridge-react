@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.0.0-alpha.1] - unreleased
+
+Needs `@nebulr-group/bridge-auth-core` 1.0.0-alpha.8. A new major line, for the new Bridge: the React counterpart of `@nebulr-group/bridge-svelte` 1.0.0-alpha.8, with the same pages, settings and wording, so the guides of either package map to the other. `latest` stays on 0.x.
+
+### Changed (breaking)
+
+- **One setting, the issuer.** `<BridgeProvider config={{ issuer }}>` replaces the app id, API base and hosted-page addresses. Every endpoint is read from the issuer's metadata. The issuer must be `https`, except `http://localhost` on your own machine.
+- **Every security step lives in `@nebulr-group/bridge-auth-core`**: tokens, PKCE, email links, hand-off, storage and revocation. This package is the React layer over it.
+- **Router-agnostic.** `<BridgeProvider router={{ location, navigate }}>` takes your router's location and navigate function (React Router, TanStack Router, Wouter); without one it uses the browser's history. The `./react-router` and `./tanstack-router` entry points are gone.
+- **The `./flags` entry point is gone.** Everything is exported from the package root; the default look is `@nebulr-group/bridge-react/styles`.
+- **ESM only**, React 18 or 19.
+
+### Added
+
+- **`<BridgeProvider>`**: makes the page's client, sends email links to their pages, guards every navigation with route rules (`public`, `featureFlag` with `any`/`all`, `redirectTo`, `defaultAccess`), and guards again when the session or the flags change. Gates are flags, never roles. A signed-in workspace whose app is not active (`bridge-app-active` off) goes to the plan page.
+- **Sign-in pages from one route**: `<Route path="/auth/*" element={<BridgeAuthRoutes />} />` serves sign-in, sign-up, verify-email, forgot-password, set-password, invite, workspaces, handoff, magic-link, passkey-setup and callback. Components: `SignInForm` (password, sign-in link, passkeys, the workspace step), `SignUpForm` (also from an invite), `VerifyEmail`, `ForgotPassword`, `SetPassword`, `InviteLanding`, `WorkspaceChooser`, `MagicLinkLanding`, `PasskeySetupLanding`, `PasskeyManager`, `HostedSignIn` and `HostedCallback` (hosted mode), `HandoffSignIn` (hand-off mode), `SignOutButton`, `ProfileName`.
+- **A paused sign-in says how long to wait**: "Too many attempts. Try again in N minutes.", and a locked account says so, in each of the 12 languages.
+- **Session storage**: `storage: 'local'` (default) or `'memory'`, where the session never reaches the browser's storage and a sign-up's email link finishes in the tab that started it.
+- **Hooks**: `useSession`, `useUser`, `useSignedIn`, `useWorkspace`, `useWorkspaces`, `useMe`, `useFlags`, `useFlag`, `useFlagsStatus`, `useCanManageBilling`, `useCanManageTeam`, `useBilling`, `usePlans`, `useUsage`, `useQuota`, `useLiveStatus`, `useBridge`, `useBridgeRouter`, `useTranslator`. Resources refresh when the person or workspace changes and within a second of a Live notice.
+- **Flags**: `<FeatureFlag flagKey>` with `fallback` that learns whether the plan is why a feature is off, and an `upgrade` prompt; `requireFlag()` for code outside components.
+- **Billing**: `<BridgeBillingRoutes>` on `/subscription/*`, `PlanPicker`, `BillingPortalButton`, `SubscriptionStatus`, `BillingNotice`, `CheckoutNotice`, `QuotaBanner`, and the upgrade dialog a 402 from your API opens through `bridgeFetch`.
+- **The team panel**: `TeamPanel` with members, invites (send, resend, revoke), roles, the workspace and the profile, on Bridge's team endpoints; admin actions follow `bridge-team-manage`.
+- **Copy in 12 languages** (`locale`), with your own wording per key (`messages`).
+- **`<Link>`**: an in-app link through your router, so a click does not reload the page.
+
+### Not in this alpha
+
+- Server helpers. React has no server side; an API checks the person's token with `@nebulr-group/bridge-auth-core/server`, or the Express and NestJS plugins.
+
 ## [0.9.1] - 2026-11-10
 
 ### Fixed
