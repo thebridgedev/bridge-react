@@ -1,119 +1,83 @@
 {
-  "name": "@nebulr-group/bridge-react",
-  "version": "0.9.1",
-  "description": "The Bridge for React: sign-in, workspaces and roles, feature flags, Stripe subscriptions and plan limits, with React Router or TanStack Router.",
-  "main": "dist/index.cjs.js",
-  "module": "dist/index.esm.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.esm.js",
-      "require": "./dist/index.cjs.js",
-      "default": "./dist/index.cjs.js"
-    },
-    "./flags": {
-      "types": "./dist/flags/index.d.ts",
-      "import": "./dist/flags/index.esm.js",
-      "require": "./dist/flags/index.cjs.js",
-      "default": "./dist/flags/index.cjs.js"
-    },
-    "./react-router": {
-      "types": "./dist/react-router/index.d.ts",
-      "import": "./dist/react-router/index.esm.js",
-      "require": "./dist/react-router/index.cjs.js",
-      "default": "./dist/react-router/index.cjs.js"
-    },
-    "./tanstack-router": {
-      "types": "./dist/tanstack-router/index.d.ts",
-      "import": "./dist/tanstack-router/index.esm.js",
-      "require": "./dist/tanstack-router/index.cjs.js",
-      "default": "./dist/tanstack-router/index.cjs.js"
-    },
-    "./styles": "./dist/styles.css"
-  },
-  "license": "MIT",
-  "author": "Iman Pouya",
-  "files": [
-    "dist/",
-    "LICENSE",
-    "README.md"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/thebridgedev/bridge-react"
-  },
-  "bugs": {
-    "url": "https://github.com/thebridgedev/bridge-react/issues"
-  },
-  "homepage": "https://thebridge.dev/docs/quickstart/react/",
-  "scripts": {
-    "build": "rm -rf ./dist && rollup -c --bundleConfigAsCjs && bun run copy-styles",
-    "build:watch": "rollup -c --bundleConfigAsCjs --watch",
-    "copy-styles": "cp src/styles.css dist/styles.css",
-    "test": "bun test",
-    "test:dist": "bun run build && bun test ./test-dist/shared-registry.dist.tsx",
-    "prepublishOnly": "bun run build",
-    "prepack": "bun run build && bun run copy-files",
-    "copy-files": "cp ../LICENSE ./LICENSE",
-    "publish-package": "bun run build && bun run copy-files && bunx npm publish --access public"
-  },
-  "keywords": [
-    "react",
-    "react-router",
-    "tanstack-router",
-    "passkeys",
-    "magic-link",
-    "the-bridge",
-    "bridge",
-    "authentication",
-    "auth",
-    "login",
-    "sso",
-    "feature-flags",
-    "stripe",
-    "subscriptions",
-    "billing",
-    "plan-limits",
-    "multi-tenant",
-    "rbac",
-    "saas"
-  ],
-  "peerDependencies": {
-    "react": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
-    "react-dom": "^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0",
-    "@nebulr-group/bridge-auth-core": ">=0.8.0 <1.0.0",
-    "react-router": ">=6.4.0 <8.0.0",
-    "@tanstack/react-router": "^1.0.0"
-  },
-  "peerDependenciesMeta": {
-    "react-router": {
-      "optional": true
-    },
-    "@tanstack/react-router": {
-      "optional": true
-    }
-  },
-  "dependencies": {
-    "@simplewebauthn/browser": "^13.0.0",
-    "jose": "^6.0.10",
-    "jwt-decode": "^4.0.0",
-    "zustand": "^4.5.0"
-  },
-  "devDependencies": {
-    "@happy-dom/global-registrator": "^20.10.6",
-    "@nebulr-group/bridge-auth-core": "0.8.0",
-    "@rollup/plugin-terser": "^0.4.4",
-    "@rollup/plugin-typescript": "^11.1.6",
-    "@tanstack/react-router": "^1",
-    "@testing-library/dom": "^10.4.1",
-    "@testing-library/react": "^16.3.2",
-    "@types/node": "^24.9.2",
-    "@types/react": "^18.2.0",
-    "happy-dom": "^20.10.6",
-    "react-router": "^6.28.0",
-    "rollup": "^4.14.1",
-    "tslib": "^2.6.2",
-    "typescript": "^5.4.0"
-  }
+	"name": "@nebulr-group/bridge-react",
+	"version": "1.0.0-alpha.1",
+	"description": "The Bridge for React: sign-in in your own pages, workspaces, flag-based route guards, plans and checkout, the team panel and live updates, on one setting: the issuer.",
+	"author": "Iman Pouya",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/thebridgedev/bridge-react.git"
+	},
+	"bugs": {
+		"url": "https://github.com/thebridgedev/bridge-react/issues"
+	},
+	"homepage": "https://thebridge.dev/docs/quickstart/react/",
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./styles": {
+			"types": "./dist/styles.d.ts",
+			"import": "./dist/styles.css",
+			"default": "./dist/styles.css"
+		},
+		"./package.json": "./package.json"
+	},
+	"files": [
+		"dist",
+		"!dist/**/*.test.*",
+		"README.md",
+		"LICENSE"
+	],
+	"sideEffects": [
+		"**/*.css"
+	],
+	"scripts": {
+		"build": "rm -rf dist && tsc -p tsconfig.build.json && cp src/styles.css src/styles.d.ts dist/",
+		"check": "tsc -p tsconfig.json --noEmit",
+		"test:unit": "vitest run",
+		"prepack": "bun run build && cp ../LICENSE ./LICENSE",
+		"package": "bun run prepack && bun pm pack --destination ../"
+	},
+	"peerDependencies": {
+		"react": "^18.0.0 || ^19.0.0",
+		"react-dom": "^18.0.0 || ^19.0.0"
+	},
+	"dependencies": {
+		"@nebulr-group/bridge-auth-core": "1.0.0-alpha.8"
+	},
+	"devDependencies": {
+		"@testing-library/react": "^16.3.0",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
+		"jose": "^6.2.3",
+		"jsdom": "^26.1.0",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"typescript": "^5.9.0",
+		"vitest": "^4.1.4"
+	},
+	"keywords": [
+		"react",
+		"the-bridge",
+		"bridge",
+		"authentication",
+		"auth",
+		"sign-in",
+		"passkeys",
+		"magic-link",
+		"feature-flags",
+		"stripe",
+		"subscriptions",
+		"billing",
+		"multi-tenant",
+		"workspaces",
+		"saas"
+	]
 }
