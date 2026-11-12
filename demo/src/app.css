@@ -1,0 +1,80 @@
+/* The demo app's own stylesheet — a helpdesk with a teal accent. */
+
+:root {
+  --app-accent: #0f766e;
+  --app-surface: #ffffff;
+  --app-bg: #f8fafc;
+  --app-text: #0f172a;
+  --app-muted: #64748b;
+  --app-border: #e2e8f0;
+
+  /* Rung 1: Bridge's pages and components follow the app's look through the
+     --bridge-* tokens. These win over the plugin's defaults whatever order the
+     stylesheets load in. */
+  --bridge-primary: var(--app-accent);
+  --bridge-primary-fg: #ffffff;
+  --bridge-border: var(--app-border);
+  --bridge-border-radius: 10px;
+  --bridge-muted: var(--app-muted);
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--app-text);
+  background: var(--app-bg);
+}
+
+main {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-surface);
+}
+.nav-brand {
+  font-weight: 700;
+  color: var(--app-accent);
+  text-decoration: none;
+}
+.nav-link {
+  color: inherit;
+  text-decoration: none;
+}
+.nav-spacer {
+  flex: 1;
+}
+.nav-email {
+  color: var(--app-muted);
+  font-size: 0.875rem;
+}
+.nav-button {
+  font: inherit;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+.custom-sign-in {
+  max-width: 26rem;
+  margin: 2rem auto;
+}
+.frame {
+  display: grid;
+  grid-template-columns: 12rem 1fr;
+  gap: 2rem;
+  padding: 2rem;
+}
+.frame-brand {
+  font-weight: 700;
+  color: var(--app-accent);
+}

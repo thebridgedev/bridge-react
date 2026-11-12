@@ -1,58 +1,81 @@
 import { defineConfig, devices } from '@playwright/test';
-import * as dotenv from 'dotenv';
-import * as path from 'path';
 
-dotenv.config({
-  path: path.resolve(__dirname, 'config/.env.test.local'),
-  override: false,
-});
+/**
+ * The demo's Playwright suite.
+ *
+ * By default it starts a local issuer (auth-core's fake issuer over HTTP,
+ * e2e/harness/fake-issuer.ts) and the demo pointed at it. Point it at a real
+ * issuer, a local bridge-server or stage, with:
+ *
+ *   E2E_ISSUER=https://…/identity-access/apps/<app id>   the issuer the demo uses
+ *   E2E_BASE_URL=http://localhost:3001                    a demo already running (else one is started)
+ *   E2E_MEMORY_BASE_URL=http://localhost:3002             the demo with VITE_DEMO_STORAGE=memory (else one is started)
+ *
+ * Tests run one at a time: the local issuer's flags and plans are shared by
+ * every test, and each test starts from a reset.
+ */
+const FAKE_PORT = Number(process.env.FAKE_ISSUER_PORT ?? 4400);
+const external = process.env.E2E_ISSUER;
+const issuer = external ?? `http://localhost:${FAKE_PORT}/identity-access/apps/app-demo`;
+const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3001';
+// The same demo with `storage: 'memory'`, for the specs under tests/memory.
+const memoryURL = process.env.E2E_MEMORY_BASE_URL ?? 'http://localhost:3002';
 
-function getViteMode(): string {
-  const project = process.env.PLAYWRIGHT_PROJECT_NAME || '';
-  if (project.includes('prod')) return 'test.prod';
-  if (project.includes('stage')) return 'test.stage';
-  return 'test.local';
-}
-
-// Demo dev-server port (matches the bridge-port §7.1 assignment).
-// Overridable via HARNESS_PORT / LOCAL_BASE_URL.
-const HARNESS_PORT = process.env.HARNESS_PORT || '3001';
-const HARNESS_URL = process.env.LOCAL_BASE_URL || `http://localhost:${HARNESS_PORT}`;
+process.env.E2E_ISSUER_RESOLVED = issuer;
+process.env.E2E_FAKE_CONTROL = external ? '' : `http://localhost:${FAKE_PORT}/__test`;
 
 export default defineConfig({
-  testDir: './e2e/playwright/tests',
-  timeout: 60_000,
-  expect: { timeout: 10_000 },
-  fullyParallel: false,
-  forbidOnly: !!process.env.CI,
-  retries: 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: [
-    ['html', { outputFolder: 'test-reports/playwright-report' }],
-    ['json', { outputFile: 'test-reports/playwright-results.json' }],
-    ['list'],
-  ],
-  use: {
-    baseURL: HARNESS_URL,
-    // Written by global-setup: seeds the demo's `bridge:appId` (TBP-721).
-    storageState: path.resolve(__dirname, 'e2e/playwright/.auth/base-state.json'),
-    trace: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'retain-on-failure',
-    screenshot: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'only-on-failure',
-    headless: process.env.PLAYWRIGHT_HEADED !== 'true',
-  },
-  projects: [
-    { name: 'local', use: { ...devices['Desktop Chrome'] } },
-    { name: 'local-no-auth', use: { ...devices['Desktop Chrome'] } },
-    { name: 'stage', use: { ...devices['Desktop Chrome'] } },
-    { name: 'prod', use: { ...devices['Desktop Chrome'] } },
-  ],
-  outputDir: 'test-reports/test-results',
-  webServer: {
-    // Use root node_modules (workspace hoisting); overrides + rm .bun fix esbuild version mismatch.
-    command: `cd demo && node ../node_modules/vite/bin/vite.js --host 0.0.0.0 --port ${HARNESS_PORT} --mode ${getViteMode()}`,
-    url: HARNESS_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
-  globalSetup: require.resolve('./e2e/playwright/global-setup'),
+	testDir: './e2e/playwright/tests',
+	timeout: 60_000,
+	expect: { timeout: 10_000 },
+	fullyParallel: false,
+	workers: 1,
+	retries: 0,
+	forbidOnly: !!process.env.CI,
+	reporter: [['list'], ['html', { outputFolder: 'test-reports/playwright-report', open: 'never' }]],
+	use: {
+		baseURL,
+		trace: 'retain-on-failure',
+		screenshot: 'only-on-failure',
+	},
+	projects: [
+		{ name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /\/memory\// },
+		{ name: 'memory', use: { ...devices['Desktop Chrome'], baseURL: memoryURL }, testMatch: /\/memory\/.*\.spec\.ts$/ },
+	],
+	webServer: [
+		...(external
+			? []
+			: [
+					{
+						command: 'bun e2e/harness/fake-issuer.ts',
+						url: `http://localhost:${FAKE_PORT}/identity-access/apps/app-demo/.well-known/openid-configuration`,
+						reuseExistingServer: true,
+						timeout: 30_000,
+					},
+				]),
+		...(process.env.E2E_BASE_URL
+			? []
+			: [
+					{
+						command: 'bun run dev',
+						cwd: 'demo',
+						url: baseURL,
+						env: { VITE_BRIDGE_ISSUER: issuer },
+						reuseExistingServer: true,
+						timeout: 120_000,
+					},
+				]),
+		...(process.env.E2E_MEMORY_BASE_URL
+			? []
+			: [
+					{
+						command: 'bun run dev -- --port 3002',
+						cwd: 'demo',
+						url: memoryURL,
+						env: { VITE_BRIDGE_ISSUER: issuer, VITE_DEMO_STORAGE: 'memory' },
+						reuseExistingServer: true,
+						timeout: 120_000,
+					},
+				]),
+	],
 });

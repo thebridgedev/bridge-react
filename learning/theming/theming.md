@@ -6,7 +6,7 @@ Bridge components ship with optional default styles. Import them for a ready-to-
 
 ## Importing styles
 
-Add this import to your app entry or global CSS:
+Add this import once, in your entry file (`src/main.tsx`) or root component:
 
 ```ts
 import '@nebulr-group/bridge-react/styles';
@@ -24,7 +24,7 @@ All of it sits in a CSS cascade layer named `bridge`, so your own CSS wins over 
 Take these steps in order, and stop as soon as Bridge looks like the rest of your app:
 
 1. **Nothing.** Bridge pages render inside your layout and inherit your font, text size and text colour.
-2. **Set a few `--bridge-*` variables**: your primary colour, borders, corners, and if your app has a distinct type style, its weights and shadows. The table below lists them all.
+2. **Set a few `--bridge-*` variables**: your primary colour, borders, corners, and if your app has a distinct type style, its weights and shadows. The tables below list them all.
 3. **Write plain CSS** against Bridge's classes and data attributes for anything the variables don't cover. It wins over Bridge's styles with no `!important`.
 
 For example, an app with heavy type and hard offset shadows gets there with variables alone:
@@ -54,17 +54,21 @@ And a press effect on its buttons is one plain rule:
 
 ## The token contract
 
-The `--bridge-*` custom properties are the supported way to restyle every Bridge page and component: the sign-in pages, the subscription pages, the plan picker, dialogs, banners and the team page. Set them in your own stylesheet on `:root`, or on a wrapper to theme one area.
+The `--bridge-*` variables below are the supported way to restyle every Bridge page and component, kept stable across releases. Set them once in your app's stylesheet:
 
 ```css
-/* index.css or any global stylesheet */
+/* src/index.css */
 :root {
   --bridge-primary: #0f766e;
+  --bridge-primary-fg: #ffffff;
+  --bridge-border: #e2e8f0;
   --bridge-border-radius: 10px;
 }
 ```
 
-Bridge's defaults sit in its cascade layer, so your `:root` wins whichever stylesheet loads first. No rule in the stylesheet paints a colour except through a token.
+Bridge's defaults sit in its cascade layer, so your `:root` wins whatever order the two stylesheets load in. Set a token on a wrapper instead of `:root` to theme one area (`<div style={{ '--bridge-primary': '#7c3aed' } as React.CSSProperties}>`). Tokens are rung 1 of the customisation rungs: rung 0 is your layout around every Bridge page, then the `frame` / `heading` render props (2), taking over one page (3) and headless (4). See [Customisation rungs](#customisation-rungs).
+
+### Colour
 
 | Token | Default | Styles |
 |---|---|---|
@@ -80,30 +84,87 @@ Bridge's defaults sit in its cascade layer, so your `:root` wins whichever style
 | `--bridge-border` | `#d1d5db` | Input, table, card and secondary button borders |
 | `--bridge-border-radius` | `6px` | Corners of inputs, buttons, alerts, cards and dialogs |
 | `--bridge-card-bg` | `--bridge-bg` | Plan cards and the current-plan panel on the subscription page |
-| `--bridge-card-shadow` | a soft 1–3px shadow on cards, a deeper one on the dialog | Plan cards, the current-plan panel and the plan-change dialog. `none` gives a flat look, which suits most dark themes |
-| `--bridge-button-shadow` | `none` | Every Bridge button's shadow, e.g. `4px 4px 0 #111` |
+| `--bridge-overlay` | `rgba(15, 23, 42, 0.45)` | Backdrop behind dialogs |
+| `--bridge-alert-error-bg` / `-fg` / `-border` | `#fef2f2` / `#991b1b` / `#fca5a5` | Errors, critical billing notices, cancelled plan badge |
+| `--bridge-alert-success-bg` / `-fg` / `-border` | `#f0fdf4` / `#166534` / `#86efac` | Confirmations, the checkout banner, active plan badge |
+| `--bridge-alert-info-bg` / `-fg` / `-border` | `#eff6ff` / `#1e40af` / `#bfdbfe` | Info notices, trial badge |
+| `--bridge-alert-warning-bg` / `-fg` / `-border` | `#fffbeb` / `#92400e` / `#fcd34d` | Warnings, a quota nearing its limit, past-due badge |
+
+The three derived tokens (`-hover`, `-light`, `--bridge-input-focus`) follow `--bridge-primary` wherever you set it, unless you set them too.
+
+### Type and shadow
+
+Every default is the look Bridge has without them.
+
+| Token | Default | Styles |
+|---|---|---|
 | `--bridge-font-size` | your `<body>` text size | The base every Bridge text size scales from. Set it only to size Bridge text differently from your body text, e.g. `18px` |
 | `--bridge-font-weight-heading` | `600`, `700` on a few titles | Page, dialog and section titles, plan names, prices |
 | `--bridge-font-weight-button` | `500` | Every Bridge button |
 | `--bridge-font-weight-label` | `500`, `600` on a few | Form labels, table headings, badges, names |
-| `--bridge-overlay` | `rgba(15, 23, 42, 0.45)` | Backdrop behind dialogs |
-| `--bridge-alert-error-{bg,fg,border}` | `#fef2f2` / `#991b1b` / `#fca5a5` | Errors, critical billing notices, cancelled plan badge |
-| `--bridge-alert-success-{bg,fg,border}` | `#f0fdf4` / `#166534` / `#86efac` | Confirmations, the checkout banner, active plan badge |
-| `--bridge-alert-info-{bg,fg,border}` | `#eff6ff` / `#1e40af` / `#bfdbfe` | Info notices, trial badge |
-| `--bridge-alert-warning-{bg,fg,border}` | `#fffbeb` / `#92400e` / `#fcd34d` | Warnings, a quota nearing its limit, past-due badge |
-| `--bridge-auth-page-padding` | `3rem 1rem` | Padding of the default sign-in page container |
-| `--bridge-billing-page-width` | `60rem` | Width of the subscription pages and `<BridgePaywallPage>` |
-| `--bridge-billing-page-padding` | `3rem 1rem` | Padding of the subscription pages and `<BridgePaywallPage>` |
-| `--bridge-paywall-bg` | `rgba(15, 23, 42, 0.72)` | Backdrop of the `<BridgePaywall>` overlay and the billing lockscreen |
-| `--bridge-paywall-panel-bg` | `--bridge-bg` | Panel of the `<BridgePaywall>` overlay |
+| `--bridge-button-shadow` | `none` | Every Bridge button's shadow, e.g. `4px 4px 0 #111` |
+| `--bridge-card-shadow` | a soft 1–3px shadow on cards, a deeper one on the dialog | Plan cards, the current-plan panel and the plan-change dialog. `none` gives a flat look, which suits most dark themes |
 
-The derived tokens (hover, light, focus) follow `--bridge-primary` wherever you set it, unless you set them too. Two older names still work as deprecated aliases: `--bridge-primary-foreground` for `--bridge-primary-fg`, and `--bridge-bg-muted` for `--bridge-muted-bg`; they will be removed in a later major.
+A weight token sets every element it covers to the same weight.
 
-The card, shadow, type and weight tokens default to the look Bridge has without them. A weight token sets every element it covers to the same weight.
+### Layout
 
-Font family and text colour are not tokens: Bridge pages render inside your layout and inherit them. Text size follows your page too: every Bridge text size is relative to your `<body>` text size, so at the browser default of 16px nothing changes, and if your body text is 18px, Bridge's is sized to match. `--bridge-font-size` is there only for when Bridge should differ from your body.
+| Token | Default | Styles |
+|---|---|---|
+| `--bridge-auth-page-padding` | `3rem 1rem` | The default container of the sign-in pages (`<BridgeAuthRoutes>`) |
+| `--bridge-billing-page-width` | `60rem` | The subscription pages (`<BridgeBillingRoutes>`) |
+| `--bridge-billing-page-padding` | `3rem 1rem` | The subscription pages |
 
-**Tailwind.** Point the tokens at your theme, e.g. `:root { --bridge-primary: theme('colors.teal.700'); }` (Tailwind 3) or `:root { --bridge-primary: var(--color-teal-700); }` (Tailwind 4).
+### Not tokens
+
+Font family and text colour. Bridge pages render inside your own layout, so they inherit your font, text colour and background like any other page. Text size follows your page too: every Bridge text size is relative to your `<body>` text size, so at the browser default of 16px nothing changes, and if your body text is 18px, Bridge's is sized to match. `--bridge-font-size` is there only for when Bridge should differ from your body.
+
+### Deprecated names
+
+Two tokens had two names. The old ones keep working, and will be removed in a later major version:
+
+| Deprecated | Use |
+|---|---|
+| `--bridge-primary-foreground` | `--bridge-primary-fg` |
+| `--bridge-bg-muted` | `--bridge-muted-bg` |
+
+## Tailwind
+
+Keep the styles import and point the tokens at your Tailwind theme, so Bridge follows it. Tailwind v4 exposes the theme as CSS variables:
+
+```css
+/* src/index.css */
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-600: #0f766e;
+  --color-brand-700: #115e59;
+}
+
+:root {
+  --bridge-primary: var(--color-brand-600);
+  --bridge-primary-hover: var(--color-brand-700);
+  --bridge-primary-fg: var(--color-white);
+  --bridge-foreground: var(--color-slate-900);
+  --bridge-muted: var(--color-slate-500);
+  --bridge-muted-bg: var(--color-slate-100);
+  --bridge-border: var(--color-slate-200);
+  --bridge-border-radius: var(--radius-lg);
+}
+```
+
+If a Tailwind variable resolves to nothing, your Tailwind version emits only the theme variables it sees used; declare the block with `@theme static` to keep them all.
+
+On Tailwind v3, the same with `theme()`:
+
+```css
+:root {
+  --bridge-primary: theme('colors.teal.700');
+  --bridge-primary-hover: theme('colors.teal.800');
+  --bridge-border: theme('colors.slate.200');
+  --bridge-border-radius: theme('borderRadius.lg');
+}
+```
 
 Utility classes work in full on your own markup, including inside the `frame` render prop. On Bridge's own elements, and on a component's `className` prop, a utility loses wherever Bridge sets the same property: Tailwind puts its utilities in a cascade layer that comes before Bridge's. Use plain CSS for those (see [Your CSS wins](#your-css-wins)), or Tailwind's important modifier (`bg-red-500!` in v4, `!bg-red-500` in v3).
 
@@ -132,7 +193,7 @@ The one exception is CSS you put in a layer of your own. A layer declared before
 All components forward `className` and `style` props to their root element, so you can target them directly:
 
 ```tsx
-<LoginForm className="my-login-form" />
+<SignInForm className="my-login-form" />
 ```
 
 ```css
@@ -141,10 +202,10 @@ All components forward `className` and `style` props to their root element, so y
 }
 ```
 
-Plain CSS like this wins over Bridge's styles; Tailwind utilities in `className` follow the Tailwind note under [The token contract](#the-token-contract). You can also use the `style` prop for inline overrides:
+Plain CSS like this wins over Bridge's styles; Tailwind utilities in `className` follow the rule in [Tailwind](#tailwind). You can also use the `style` prop for inline overrides:
 
 ```tsx
-<LoginForm style={{ '--bridge-primary': '#7c3aed' } as React.CSSProperties} />
+<SignInForm style={{ '--bridge-primary': '#7c3aed' } as React.CSSProperties} />
 ```
 
 ## Data attributes for state-based styling
@@ -166,11 +227,8 @@ Bridge components expose data attributes that you can use as CSS selectors for s
 | `[data-current="true"]` | `"true"` / `"false"` | Current plan card |
 | `[data-bridge-alert]` | (none) | Alert component |
 | `[data-bridge-auth-form]` | (none) | Auth form wrapper |
-| `[data-bridge-passkey-login]` | (none) | Passkey login button |
-| `[data-bridge-sso-button]` | (none) | SSO button |
 | `[data-bridge-spinner]` | (none) | Loading spinner |
-| `[data-bridge-api-tokens]` | (none) | API token management root |
-| `[data-bridge-workspace-selector]` | (none) | Workspace selector root |
+| `[data-bridge-workspace-selector]` | (none) | Workspace chooser root |
 | `[data-bridge-workspace-item]` | (none) | Individual workspace item |
 
 Example: style the active workspace differently.
@@ -184,12 +242,35 @@ Example: style the active workspace differently.
 
 ## Headless usage
 
-If you manage all styling yourself (e.g. you use Tailwind), skip the import entirely:
+If you would rather style every component from scratch, skip the import entirely:
 
 ```diff
   // src/main.tsx
-  import { BridgeProvider } from '@nebulr-group/bridge-react';
 - import '@nebulr-group/bridge-react/styles';
+  import { createRoot } from 'react-dom/client';
 ```
 
 Components render as plain, unstyled HTML. Use the `className` prop and the data attributes listed above to apply your own styles. The structural layout (flexbox, grid) is embedded in the stylesheet, so without it you have full control over how components are laid out.
+
+## Customisation rungs
+
+Each rung keeps everything the rung below it gives you.
+
+0. **Your layout.** Bridge's pages render inside your own layout, with your navigation, fonts and text colour.
+1. **Tokens.** Set `--bridge-*` tokens in your CSS (see [The token contract](#the-token-contract)).
+2. **Frame and headings.** `<BridgeAuthRoutes>` and `<BridgeBillingRoutes>` take a `frame(page, content)` render prop that replaces everything around the form on every page, and a `heading(page)` render prop per page:
+
+   ```tsx
+   <BridgeAuthRoutes
+     frame={(page, form) => (
+       <div className="split">
+         <aside>Acme</aside>
+         {form}
+       </div>
+     )}
+     heading={(page) => <h2>{page === 'sign-in' ? 'Welcome back' : 'Acme'}</h2>}
+   />
+   ```
+
+3. **Take over one page.** Add a route of its own before `/auth/*`, with your own words and `<SignInForm heading={null} />` inside (`<Route path="/auth/sign-in" element={<MySignIn />} />`). The router prefers the specific route, and the other pages keep working.
+4. **Headless.** Build the screen yourself on `getBridge()`, with `errorMessage()` for Bridge's own words for what went wrong.

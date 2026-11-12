@@ -8,7 +8,7 @@ cd "$ROOT"
 
 echo "==> Building and packing package..."
 bun install
-bun run build
+bun run build:bridge
 bun run package
 # package script outputs to repo root (destination ../ from bridge-react)
 PACKED=$(ls "$ROOT"/nebulr-group-bridge-react-*.tgz 2>/dev/null | head -1)

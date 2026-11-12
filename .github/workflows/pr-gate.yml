@@ -2,7 +2,7 @@ name: PR gate
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, v1]
 
 permissions:
   contents: read
@@ -11,7 +11,7 @@ jobs:
   gate:
     uses: thebridgedev/auth-core/.github/workflows/merge-gate.yml@main
     with:
-      # bun workspace with a root bun.lock: frozen install.
-      working-directory: .
-      install-command: bun install --frozen-lockfile --ignore-scripts
+      # bun, no tracked lockfile: prove every pinned version resolves.
+      working-directory: bridge-react
+      install-command: bun install --ignore-scripts
       setup-bun: true

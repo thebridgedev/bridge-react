@@ -1,72 +1,53 @@
-import { BridgePaywallPage, ProtectedRoute } from '@nebulr-group/bridge-react';
-import { BridgeAuthRoutes, BridgeBillingRoutes, useBridgeRouter } from '@nebulr-group/bridge-react/react-router';
-import { Route, Routes } from 'react-router-dom';
-import Layout from './components/Layout';
-import DashboardPage from './pages/DashboardPage';
-import FeatureFlagsPage from './pages/FeatureFlagsPage';
-import FlagContextDemoPage from './pages/FlagContextDemoPage';
-import HomePage from './pages/HomePage';
-import LoginPage from './pages/LoginPage';
-import NotFoundPage from './pages/NotFoundPage';
-import ApiTokensPage from './pages/ApiTokensPage';
-import ProfilePage from './pages/ProfilePage';
-import SubscriptionRelativePage from './pages/SubscriptionRelativePage';
-import TeamPage from './pages/TeamPage';
-import TeamPanelPage from './pages/TeamPanelPage';
-import WorkspacesPage from './pages/WorkspacesPage';
-import TokenStatusPage from './pages/TokenStatusPage';
-import ProtectedPage from './pages/ProtectedPage';
+import { BillingNotice, BridgeAuthRoutes, BridgeBillingRoutes, BridgeProvider, type BridgeConfig } from '@nebulr-group/bridge-react';
+import { Route, Routes, useLocation, useNavigate } from 'react-router';
+import { Nav } from './Nav';
+import { CustomSignIn } from './pages/CustomSignIn';
+import { Framed } from './pages/Framed';
+import { Headless } from './pages/Headless';
+import { Home } from './pages/Home';
+import { Reports } from './pages/Reports';
+import { Team } from './pages/Team';
+import { Tickets } from './pages/Tickets';
 
-function App() {
-  // Bridge's own navigation (the route guard, the paywall) goes through React
-  // Router. <BridgeAuthRoutes>/<BridgeBillingRoutes> also register it; this
-  // covers pages that render neither.
-  useBridgeRouter();
+// The issuer comes from VITE_BRIDGE_ISSUER, so the same build runs against a local Bridge or stage.
+const config: BridgeConfig = {
+	issuer: import.meta.env.VITE_BRIDGE_ISSUER,
+	rules: [
+		{ match: '/', public: true },
+		{ match: '/custom/*', public: true },
+		{ match: '/framed/*', public: true },
+		{ match: '/headless', public: true },
+		// A page only some people see: the flag's rule says who.
+		{ match: '/reports', featureFlag: 'reports', redirectTo: '/' },
+	],
+	// Bridge's own sign-in page turns this on to sign people in for the CLI.
+	handoff: { loopback: true, program: 'the Bridge CLI' },
+	// VITE_DEMO_STORAGE=memory keeps the session in the page's memory only: nothing in the browser's storage.
+	storage: import.meta.env.VITE_DEMO_STORAGE === 'memory' ? 'memory' : 'local',
+};
 
-  return (
-    <Layout>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/flag-context-demo" element={<FlagContextDemoPage />} />
-
-        {/* TBP-743 — every sign-in page (login, signup, the OAuth callback,
-            set-password, forgot-password, magic-link, setup-passkey,
-            workspaces) from one route. Public: not behind ProtectedRoute. */}
-        <Route path="/auth/*" element={<BridgeAuthRoutes />} />
-
-        {/* The demo's own onboarding paywall (billing.paywallRoute: '/welcome').
-            PUBLIC so a plan-less user can land and pick a plan. */}
-        <Route path="/welcome" element={<BridgePaywallPage heading="Welcome — let's pick your plan" />} />
-
-        {/* Wrap all protected routes under one ProtectedRoute */}
-        <Route
-          path="/*"
-          element={(
-            <ProtectedRoute>
-              <Routes>
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/protected" element={<ProtectedPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/feature-flags" element={<FeatureFlagsPage />} />
-                <Route path="/team" element={<TeamPage />} />
-                <Route path="/team-panel" element={<TeamPanelPage />} />
-                <Route path="/workspaces" element={<WorkspacesPage />} />
-                {/* TBP-743 — the subscription page, /subscription/plan,
-                    /subscription/success and /subscription/error. */}
-                <Route path="/subscription/*" element={<BridgeBillingRoutes />} />
-                <Route path="/subscription-relative" element={<SubscriptionRelativePage />} />
-                <Route path="/api-tokens" element={<ApiTokensPage />} />
-                <Route path="/token-status" element={<TokenStatusPage />} />
-              </Routes>
-            </ProtectedRoute>
-          )}
-        />
-
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </Layout>
-  );
+export function App() {
+	// The provider navigates through React Router, so the router sees every navigation.
+	const location = useLocation();
+	const navigate = useNavigate();
+	return (
+		<BridgeProvider config={config} router={{ location, navigate: (to, options) => void navigate(to, options) }}>
+			<Nav />
+			<BillingNotice />
+			<main>
+				<Routes>
+					<Route path="/" element={<Home />} />
+					<Route path="/auth/*" element={<BridgeAuthRoutes />} />
+					<Route path="/custom/sign-in" element={<CustomSignIn />} />
+					<Route path="/framed/*" element={<Framed />} />
+					<Route path="/headless" element={<Headless />} />
+					<Route path="/reports" element={<Reports />} />
+					<Route path="/settings/team" element={<Team />} />
+					<Route path="/subscription/*" element={<BridgeBillingRoutes />} />
+					<Route path="/tickets" element={<Tickets />} />
+					<Route path="*" element={<h1>Not found</h1>} />
+				</Routes>
+			</main>
+		</BridgeProvider>
+	);
 }
-
-export default App;

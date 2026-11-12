@@ -16,69 +16,67 @@
 
 # The Bridge for React
 
-`@nebulr-group/bridge-react` adds sign-in, workspaces and roles, feature flags, Stripe subscriptions and plan limits to a React app, with React Router or TanStack Router.
+`@nebulr-group/bridge-react` adds sign-in in your own pages, workspaces, flag-based route guards, plans and checkout, the team panel and live updates to a React 18 or 19 app, with one `.env` line, a provider and two routes. It works with React Router, TanStack Router, Wouter or no router at all.
 
-**[The Bridge](https://thebridge.dev/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)** is a hosted backend for SaaS apps. It gives you sign-in (passwords, magic links, passkeys, social login and SSO), multi-tenant workspaces with roles, Stripe subscriptions with plan limits, and feature flags, all managed from one dashboard. Your AI coding assistant can set it up for you through the [Bridge MCP server](https://thebridge.dev/docs/ai-assistants/mcp/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react).
+> **This is the 1.0 alpha**, built on `@nebulr-group/bridge-auth-core` 1.0 and the new Bridge API. It installs from the `alpha` tag; `latest` stays on 0.x until 1.0.0. It runs in the browser and signs people in with email and password, sign-in links and passkeys. Its components, props and settings match `@nebulr-group/bridge-svelte` 1.0.
 
-> **Let your AI assistant set it up.** Connect the [Bridge MCP server](https://thebridge.dev/docs/ai-assistants/mcp/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react) to Claude, Cursor, Copilot or Gemini CLI and ask it to add Bridge to your app. Not using MCP? Run `npx @nebulr-group/bridge-cli guide add-login` in your project: it detects your framework from `package.json` and prints the steps for your assistant to follow. `npx @nebulr-group/bridge-cli doctor` checks the result.
+**[The Bridge](https://thebridge.dev/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)** is a hosted backend for SaaS apps: sign-in, multi-tenant workspaces, Stripe subscriptions with plan limits, and feature flags, managed from one dashboard.
 
 ## Install
 
-```bash
-npm install @nebulr-group/bridge-react @nebulr-group/bridge-auth-core
+```sh
+npm install @nebulr-group/bridge-react@alpha
 ```
 
 ## The whole integration
 
-```env
-VITE_BRIDGE_APP_ID=your-app-id
+```sh
+# .env: the issuer from your app's settings in Bridge
+VITE_BRIDGE_ISSUER=https://…/identity-access/apps/<your app id>
 ```
 
 ```tsx
-// main.tsx
-import { BridgeProvider } from '@nebulr-group/bridge-react';
-import '@nebulr-group/bridge-react/styles';
+// src/App.tsx, inside <BrowserRouter>; import '@nebulr-group/bridge-react/styles' once in main.tsx
+import { BridgeAuthRoutes, BridgeProvider, type BridgeConfig } from '@nebulr-group/bridge-react';
+import { Route, Routes, useLocation, useNavigate } from 'react-router';
 
-<BridgeProvider config={{ loginRoute: '/auth/login' }}>
-  <BrowserRouter><App /></BrowserRouter>
-</BridgeProvider>
+const config: BridgeConfig = {
+  issuer: import.meta.env.VITE_BRIDGE_ISSUER,
+  rules: [{ match: '/', public: true }],
+};
+
+export function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <BridgeProvider config={config} router={{ location, navigate: (to, options) => void navigate(to, options) }}>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/auth/*" element={<BridgeAuthRoutes />} />
+      </Routes>
+    </BridgeProvider>
+  );
+}
 ```
 
-```tsx
-// App.tsx — React Router
-import { BridgeAuthRoutes, BridgeBillingRoutes } from '@nebulr-group/bridge-react/react-router';
+In your app's settings in Bridge, add your app's address as a browser address and `https://<your app>/auth` as its email-links address. See the [Quickstart](https://github.com/thebridgedev/bridge-react/blob/v1/learning/quickstart/quickstart.md).
 
-<Route path="/auth/*" element={<BridgeAuthRoutes />} />
-<Route path="/subscription/*" element={<BridgeBillingRoutes />} />
-```
+## What it gives you
 
-TanStack Router: import the same components from `@nebulr-group/bridge-react/tanstack-router` and mount them on `auth/$` and `subscription/$` routes. The routers are optional peer dependencies.
-
-Options you pass win over `VITE_BRIDGE_*` / `REACT_APP_BRIDGE_*`, which win over the defaults. Take over any one page by passing an element (`pages={{ login: <MyLogin /> }}`); restyle everything with the `--bridge-*` CSS tokens.
-
-How the pieces fit together: [How Bridge works](https://github.com/thebridgedev/bridge-react/blob/main/learning/mechanisms.md).
-
-## Learn more
-
-- [Quickstart](https://thebridge.dev/docs/quickstart/react/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)
-- [Authentication](https://thebridge.dev/docs/auth/react/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)
-- [Sign-in inside your app](https://thebridge.dev/docs/sdk-auth/react/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)
-- [Feature flags](https://thebridge.dev/docs/feature-flags/react/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)
-- [Branding](https://thebridge.dev/docs/branding/react/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)
-- [Live updates](https://thebridge.dev/docs/live-updates/react/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)
-- [Subscriptions and plan limits](https://thebridge.dev/docs/billing/how-it-works/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-react)
-
-## Other Bridge packages
-
-| Package | For |
+| Area | Pieces |
 |---|---|
-| [`@nebulr-group/bridge-svelte`](https://www.npmjs.com/package/@nebulr-group/bridge-svelte) | SvelteKit |
-| [`@nebulr-group/bridge-nextjs`](https://www.npmjs.com/package/@nebulr-group/bridge-nextjs) | Next.js |
-| [`@nebulr-group/bridge-angular`](https://www.npmjs.com/package/@nebulr-group/bridge-angular) | Angular |
-| [`@nebulr-group/bridge-nestjs`](https://www.npmjs.com/package/@nebulr-group/bridge-nestjs) | NestJS |
-| [`@nebulr-group/bridge-express`](https://www.npmjs.com/package/@nebulr-group/bridge-express) | Express |
-| [`@nebulr-group/bridge-cli`](https://www.npmjs.com/package/@nebulr-group/bridge-cli) | CLI for people and AI agents |
-| [`@nebulr-group/bridge-auth-core`](https://www.npmjs.com/package/@nebulr-group/bridge-auth-core) | Any JavaScript app (core) |
+| Sign-in | `BridgeAuthRoutes` (sign-in, sign-up, verify-email, forgot-password, set-password, invite, workspaces, magic-link, passkey-setup, handoff, callback), `SignInForm`, `SignUpForm`, `VerifyEmail`, `ForgotPassword`, `SetPassword`, `InviteLanding`, `MagicLinkLanding`, `PasskeySetupLanding`, `PasskeyManager`, `WorkspaceChooser`, `SignOutButton`, `ProfileName` |
+| Gates | route `rules`, `FeatureFlag`, `useFlag`, `requireFlag`, the paywall: all on flag results, never a role or the plan |
+| Billing | `BridgeBillingRoutes`, `PlanPicker`, `BillingPortalButton`, `SubscriptionStatus`, `BillingNotice`, `QuotaBanner`, `CheckoutNotice`, `UpgradeDialog`, `useQuota`, `bridgeFetch` |
+| Team | `TeamPanel`, `MemberList`, `InviteDialog`, `InviteList`, `EditMemberDialog`, `ConfirmDialog`, `WorkspaceForm`, `ProfileForm` |
+| State | `useSession`, `useUser`, `useWorkspace`, `useWorkspaces`, `useMe`, `useFlags`, `useBilling`, `usePlans`, `useUsage`, `useLiveStatus`, `getBridge()` |
+| Hand-off | `HandoffSignIn`, `readHandoff`, `handoffSignIn`: a sign-in page for a command-line tool |
+| Hosted mode | `hosted: {}` in the config: `/auth/sign-in` sends people to the page Bridge hosts for the app, and `/auth/callback` (`HostedCallback`) finishes the sign-in when they come back. Register the page's origin as a browser address and `https://<your app>/auth/callback` as a sign-in return |
+| Several sign-in pages | `linkAddress` in the config: which of the app's registered email-links addresses its emails link to |
+
+There is no server side in this package: your API checks tokens with `@nebulr-group/bridge-auth-core/server`, or with The Bridge's Express or NestJS plugin.
+
+All the guides: [the learning docs](https://github.com/thebridgedev/bridge-react/tree/v1/learning).
 
 ## License
 
