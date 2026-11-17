@@ -6,7 +6,8 @@ const plugin = (path: string) => fileURLToPath(new URL(`../bridge-react/src/${pa
 
 /**
  * A stand-in for the app's own API, so the demo needs no server: it refuses
- * an export at a plan limit with the 402 a server plugin answers at the cap.
+ * an export at a plan limit with the 402 a server plugin answers at the cap,
+ * and creates a ticket.
  * The browser's side (the upgrade dialog) is what the demo shows.
  */
 function demoApi(): Plugin {
@@ -14,6 +15,11 @@ function demoApi(): Plugin {
 	return {
 		name: 'demo-api',
 		configureServer(server) {
+			server.middlewares.use('/api/tickets', (request, response) => {
+				response.statusCode = request.method === 'POST' ? 201 : 405;
+				response.setHeader('content-type', 'application/json');
+				response.end('{}');
+			});
 			server.middlewares.use('/api/exports', (request, response) => {
 				response.statusCode = request.method === 'POST' ? 402 : 405;
 				response.setHeader('content-type', 'application/json');

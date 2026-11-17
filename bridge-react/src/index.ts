@@ -47,14 +47,19 @@ export {
 export type { CurrentWorkspace, ResourceState } from './react/hooks.js';
 export { billing, me, plans, resource, usage, workspaces } from './core/resources.js';
 export type { Resource, ResourceStore } from './core/resources.js';
+export { useEntitlements } from './react/entitlements.js';
+export type { EntitlementsState } from './react/entitlements.js';
+export { useBillingGate, useBillingLocked } from './react/billing-gate.js';
+export { useQuota } from './react/quota.js';
+export type { QuotaLevel, QuotaState } from './core/quota.js';
 
 // Flags
 export { canManageBilling, canManageTeam, requireFlag } from './core/flags.js';
 
 // Calling your API
 export { bridgeFetch } from './core/fetch.js';
-export { closeUpgrade, openUpgrade, readPaymentRequired, upgradeRequest } from './core/upgrade.js';
-export type { UpgradeDialogProps, UpgradeRequest } from './core/upgrade.js';
+export { closeUpgrade, onBridgeQuotaExceeded, openUpgrade, parseQuotaRefusal, readPaymentRequired, upgradeRequest } from './core/upgrade.js';
+export type { BridgeQuotaRefusal, UpgradeDialogProps, UpgradeRequest } from './core/upgrade.js';
 
 // Hand-off mode
 export { handoffSignIn, readHandoff, returnToProgram } from './core/handoff.js';
@@ -67,7 +72,7 @@ export type { PluginMessageKey } from './core/messages.js';
 
 // The few auth-core names app code needs to use this package
 export { BridgeError, isBridgeError, STANDARD_FLAGS } from '@nebulr-group/bridge-auth-core';
-export type { Bridge, BridgeErrorKind, SessionState, SessionUser, SessionWorkspace } from '@nebulr-group/bridge-auth-core';
+export type { BillingGateState, Bridge, BridgeErrorKind, QuotaSnapshot, SessionState, SessionUser, SessionWorkspace } from '@nebulr-group/bridge-auth-core';
 
 // Components
 export { Link } from './components/shared/Link.js';
@@ -106,6 +111,7 @@ export { ProfileName } from './components/auth/ProfileName.js';
 export { FeatureFlag } from './components/flags/FeatureFlag.js';
 export type { FeatureFlagOffInfo, FeatureFlagProps } from './components/flags/FeatureFlag.js';
 export { UpgradeDialog } from './components/billing/UpgradeDialog.js';
+export { UpgradeDialog as BridgeUpgradeDialog } from './components/billing/UpgradeDialog.js';
 export { LiveStatusBadge } from './components/live/LiveStatusBadge.js';
 export { TeamPanel } from './components/team/TeamPanel.js';
 export type { TeamPanelProps, TeamTab, TeamTabId } from './components/team/TeamPanel.js';
@@ -134,8 +140,11 @@ export type { SubscriptionStatusProps } from './components/billing/SubscriptionS
 export { BillingNotice } from './components/billing/BillingNotice.js';
 export type { BillingNoticeProps } from './components/billing/BillingNotice.js';
 export { QuotaBanner } from './components/billing/QuotaBanner.js';
+export { QuotaBanner as BridgeQuotaBanner } from './components/billing/QuotaBanner.js';
 export type { QuotaBannerProps } from './components/billing/QuotaBanner.js';
+export { QuotaGate, quotaGateState } from './components/billing/QuotaGate.js';
+export type { QuotaGateProps, QuotaGateState } from './components/billing/QuotaGate.js';
+export { Entitled } from './components/billing/Entitled.js';
+export type { EntitledProps } from './components/billing/Entitled.js';
 export { CheckoutNotice } from './components/billing/CheckoutNotice.js';
 export type { CheckoutNoticeProps, CheckoutOutcome } from './components/billing/CheckoutNotice.js';
-export { useQuota } from './components/billing/quota.js';
-export type { Quota, QuotaState } from './components/billing/quota.js';

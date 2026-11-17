@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+Needs the auth-core release with plan limits, entitlements and the billing lock.
+
+### Added
+
+- **`QuotaGate`, `Entitled` and `useEntitlements`.** `<QuotaGate metric>` disables the actions inside once a metric is at its hard limit and shows an upgrade line; `<Entitled to>` shows its content when the plan has a feature; `useEntitlements().can(key)` reads the same, from the flag `bridge:billing.entitlement.<key>`, fail-closed until Bridge has answered (`ready`).
+- **`useQuota(metric)` gives `loading`, `unlimited`, `used`, `limit`, `remaining`, `warningLevel`, `kind` and `snapshot`** (with `policy`), and still `ratio` and `state`.
+- **The billing lock.** `<BillingNotice mode="hard" />` blocks the page while the workspace is locked for payment; the lock shows to every person and at once when your API answers a change with its 402 through `bridgeFetch`. `useBillingGate()` and `useBillingLocked()` give it as hooks.
+- **`onBridgeQuotaExceeded(handler)`** runs for each limit your API refuses through `bridgeFetch`, for an app with its own dialog.
+- `BridgeQuotaBanner` and `BridgeUpgradeDialog` are other names for `QuotaBanner` and `UpgradeDialog`.
+
+### Changed
+
+- **`QuotaBanner` and `useQuota` read Bridge's quota numbers** and follow quota and plan changes live, instead of the period's usage read once. The banner shows from 80%, says "limit reached" at the limit, and shows a metered limit's overage. `onActionClick` receives the quota snapshot.
+- **`useQuota` always returns an object** (`loading` is true until Bridge has answered) instead of `null` while loading and for a metric without a limit.
+- The type `QuotaState` is now what `useQuota` returns; the former `'ok' | 'near' | 'over'` is `QuotaLevel`, and `Quota` is gone.
+
 ## [1.0.0-alpha.1] - unreleased
 
 Needs `@nebulr-group/bridge-auth-core` 1.0.0-alpha.8. A new major line, for the new Bridge: the React counterpart of `@nebulr-group/bridge-svelte` 1.0.0-alpha.8, with the same pages, settings and wording, so the guides of either package map to the other. `latest` stays on 0.x.

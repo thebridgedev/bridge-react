@@ -4,9 +4,15 @@
  * change waiting. Renders nothing when all is well. A person with the
  * `billingManage` flag gets a link to the billing pages; anyone else is told
  * to ask the workspace owner. Not dismissible: it goes when the facts change.
+ *
+ * A workspace locked for payment shows to every person, from the lock Bridge
+ * keeps (`useBillingGate`), and at once when your API refuses a write with the
+ * lock's 402 through `bridgeFetch`. With `mode="hard"` the lock covers the page
+ * as a blocking screen; every other notice stays a banner.
  */
 import { billingNotice, type BillingFacts, type BillingNotice as Notice, type Plan } from '@nebulr-group/bridge-auth-core';
 import type { HTMLAttributes, MouseEvent } from 'react';
+import { useBillingGate } from '../../react/billing-gate.js';
 import { useBilling, useBridgeConfig, useCanManageBilling, usePlans } from '../../react/hooks.js';
 import { Link } from '../shared/Link.js';
 import { formatDate } from './plan-format.js';
@@ -17,6 +23,8 @@ type Severity = 'info' | 'warn' | 'critical' | 'locked';
 export interface BillingNoticeProps extends HTMLAttributes<HTMLDivElement> {
 	/** The notice's shape: a full-width bar, a rail with a left edge, or a card. @default 'rail' */
 	readonly chassis?: Chassis;
+	/** `hard` covers the page with a blocking screen while the workspace is locked for payment; other notices stay banners. @default 'soft' */
+	readonly mode?: 'soft' | 'hard';
 	/** Where the action link goes. @default the plan page for no plan, else the subscription page */
 	readonly actionHref?: string;
 	/** Replaces the action link's navigation. */
@@ -33,6 +41,7 @@ const SEVERITY: Record<Notice['kind'], Severity> = {
 };
 
 const OWNER = 'Please contact your workspace owner.';
+const BLOCKED: Notice = { kind: 'blocked' };
 
 function daysLeft(days: number): string {
 	if (days <= 0) return 'The trial ends today.';
@@ -72,14 +81,16 @@ function copyFor(n: Notice, admin: boolean, facts: BillingFacts | null, plans: r
 	}
 }
 
-export function BillingNotice({ chassis = 'rail', actionHref, onActionClick, className, ...rest }: BillingNoticeProps) {
+export function BillingNotice({ chassis = 'rail', mode = 'soft', actionHref, onActionClick, className, ...rest }: BillingNoticeProps) {
 	const config = useBridgeConfig();
 	const base = config?.billingBase ?? '/subscription';
 	const canManage = useCanManageBilling();
 	const billing = useBilling();
 	const plans = usePlans();
+	const gate = useBillingGate();
 
-	const notice = billing.value ? billingNotice(billing.value) : null;
+	// The lock is shown from the gate as well as the billing facts: the gate is read by every person, and a refusal shows it at once.
+	const notice: Notice | null = gate.locked ? BLOCKED : billing.value ? billingNotice(billing.value) : null;
 	if (!notice) return null;
 	const severity = SEVERITY[notice.kind];
 	const urgent = severity === 'critical' || severity === 'locked';
@@ -90,6 +101,32 @@ export function BillingNotice({ chassis = 'rail', actionHref, onActionClick, cla
 		if (!onActionClick || !notice) return;
 		event.preventDefault();
 		onActionClick(notice);
+	}
+
+	if (mode === 'hard' && notice.kind === 'blocked') {
+		return (
+			<div
+				className={['bridge-billing-lockscreen', className].filter(Boolean).join(' ')}
+				data-bridge-billing-lockscreen=""
+				role="alertdialog"
+				aria-modal="true"
+				aria-live="assertive"
+				aria-labelledby="bridge-lock-title"
+				{...rest}
+			>
+				<div className="bbl-panel">
+					<strong id="bridge-lock-title" className="bbl-title">
+						{copy.title}
+					</strong>
+					<span className="bbl-body">{copy.body}</span>
+					{copy.cta && canManage && (
+						<Link className="bbl-cta" href={href} data-bridge-billing-notice-cta="" onClick={handleAction}>
+							{copy.cta}
+						</Link>
+					)}
+				</div>
+			</div>
+		);
 	}
 
 	return (

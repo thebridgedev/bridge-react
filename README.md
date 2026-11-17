@@ -67,7 +67,7 @@ In your app's settings in Bridge, add your app's address as a browser address an
 |---|---|
 | Sign-in | `BridgeAuthRoutes` (sign-in, sign-up, verify-email, forgot-password, set-password, invite, workspaces, magic-link, passkey-setup, handoff, callback), `SignInForm`, `SignUpForm`, `VerifyEmail`, `ForgotPassword`, `SetPassword`, `InviteLanding`, `MagicLinkLanding`, `PasskeySetupLanding`, `PasskeyManager`, `WorkspaceChooser`, `SignOutButton`, `ProfileName` |
 | Gates | route `rules`, `FeatureFlag`, `useFlag`, `requireFlag`, the paywall: all on flag results, never a role or the plan |
-| Billing | `BridgeBillingRoutes`, `PlanPicker`, `BillingPortalButton`, `SubscriptionStatus`, `BillingNotice`, `QuotaBanner`, `CheckoutNotice`, `UpgradeDialog`, `useQuota`, `bridgeFetch` |
+| Billing | `BridgeBillingRoutes`, `PlanPicker`, `BillingPortalButton`, `SubscriptionStatus`, `BillingNotice`, `QuotaBanner`, `QuotaGate`, `Entitled`, `CheckoutNotice`, `UpgradeDialog`, `useQuota`, `useEntitlements`, `bridgeFetch` |
 | Team | `TeamPanel`, `MemberList`, `InviteDialog`, `InviteList`, `EditMemberDialog`, `ConfirmDialog`, `WorkspaceForm`, `ProfileForm` |
 | State | `useSession`, `useUser`, `useWorkspace`, `useWorkspaces`, `useMe`, `useFlags`, `useBilling`, `usePlans`, `useUsage`, `useLiveStatus`, `getBridge()` |
 | Hand-off | `HandoffSignIn`, `readHandoff`, `handoffSignIn`: a sign-in page for a command-line tool |
