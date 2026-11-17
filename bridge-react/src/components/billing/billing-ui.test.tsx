@@ -344,3 +344,52 @@ describe('a 402 at a plan limit', () => {
 		expect(parseQuotaRefusal({ type: 'urn:bridge:problem:limit-reached', metric: 'seats', limit: 5, used: 5 })).toMatchObject({ metric: 'seats', fix: null });
 	});
 });
+
+describe('the 0.9 names', () => {
+	it('BridgeBillingNotice, BridgeQuotaBanner and BridgeUpgradeDialog are the 1.0 components', async () => {
+		const lib = await import('../../index.js');
+		expect(lib.BridgeBillingNotice).toBe(lib.BillingNotice);
+		expect(lib.BridgeQuotaBanner).toBe(lib.QuotaBanner);
+		expect(lib.BridgeUpgradeDialog).toBe(lib.UpgradeDialog);
+	});
+
+	it('dismissQuotaRefusal closes the upgrade dialog a refusal opened', async () => {
+		const { dismissQuotaRefusal } = await import('../../index.js');
+		await signedIn({ api: () => new Response(JSON.stringify({ statusCode: 402, code: 'QUOTA_EXCEEDED', metric: 'tickets', used: 3, limit: 3, fix: '/subscription', message: 'Over' }), { status: 402, headers: { 'content-type': 'application/json' } }) });
+		await bridgeFetch(`${API}/tickets`, { method: 'POST' });
+		expect(upgradeRequest.get()).not.toBeNull();
+		dismissQuotaRefusal();
+		expect(upgradeRequest.get()).toBeNull();
+	});
+
+	it('useBridgeBilling answers before there is a client: nothing locked, no quota, no feature', async () => {
+		const { useBridgeBilling } = await import('../../index.js');
+		const billing = useBridgeBilling();
+		expect(billing.isLocked()).toBe(false);
+		expect(billing.gateState()).toEqual({ locked: false, severity: 'info', noticeState: 'active' });
+		expect(billing.quota('tickets')).toBeUndefined();
+		expect(billing.entitlements.can('analytics')).toBe(false);
+		expect(billing.entitlements.all()).toEqual({});
+		expect(() => billing.assertNotLocked()).not.toThrow();
+		expect(() => billing.quotas).toThrow();
+	});
+
+	it('useBridgeBilling follows the page\'s client: quota, plan features, the lock and the quota.updated handler', async () => {
+		const { useBridgeBilling } = await import('../../index.js');
+		const billing = useBridgeBilling();
+		const heard: string[] = [];
+		const stop = billing.handle({ 'quota.updated': (message) => heard.push(message.metric) });
+		const { fake } = await signedIn({ flags: { 'bridge:billing.entitlement.analytics': true }, facts: { status: 'past_due', access: 'blocked' } });
+		fake.setQuota('tickets', read(2, 5));
+		expect(billing.quota('tickets')).toBeUndefined();
+		await waitFor(() => expect(billing.quota('tickets')).toMatchObject({ used: 2, limit: 5 }));
+		expect(billing.quotas.get('tickets')).toMatchObject({ used: 2 });
+		expect(billing.entitlements.can('analytics')).toBe(true);
+		expect(billing.entitlements.all()).toMatchObject({ analytics: true });
+		await waitFor(() => expect(billing.isLocked()).toBe(true));
+		expect(billing.gateState()).toMatchObject({ locked: true, severity: 'locked' });
+		expect(() => billing.assertNotLocked()).toThrow();
+		stop();
+		expect(heard).toEqual([]);
+	});
+});

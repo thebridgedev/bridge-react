@@ -50,6 +50,8 @@ export type { Resource, ResourceStore } from './core/resources.js';
 export { useEntitlements } from './react/entitlements.js';
 export type { EntitlementsState } from './react/entitlements.js';
 export { useBillingGate, useBillingLocked } from './react/billing-gate.js';
+export { useBridgeBilling } from './react/bridge-billing.js';
+export type { BridgeBillingApi } from './react/bridge-billing.js';
 export { useQuota } from './react/quota.js';
 export type { QuotaLevel, QuotaState } from './core/quota.js';
 
@@ -58,7 +60,7 @@ export { canManageBilling, canManageTeam, requireFlag } from './core/flags.js';
 
 // Calling your API
 export { bridgeFetch } from './core/fetch.js';
-export { closeUpgrade, onBridgeQuotaExceeded, openUpgrade, parseQuotaRefusal, readPaymentRequired, upgradeRequest } from './core/upgrade.js';
+export { closeUpgrade, closeUpgrade as dismissQuotaRefusal, onBridgeQuotaExceeded, openUpgrade, parseQuotaRefusal, readPaymentRequired, upgradeRequest } from './core/upgrade.js';
 export type { BridgeQuotaRefusal, UpgradeDialogProps, UpgradeRequest } from './core/upgrade.js';
 
 // Hand-off mode
@@ -138,7 +140,8 @@ export type { BillingPortalButtonProps } from './components/billing/BillingPorta
 export { SubscriptionStatus } from './components/billing/SubscriptionStatus.js';
 export type { SubscriptionStatusProps } from './components/billing/SubscriptionStatus.js';
 export { BillingNotice } from './components/billing/BillingNotice.js';
-export type { BillingNoticeProps } from './components/billing/BillingNotice.js';
+export { BillingNotice as BridgeBillingNotice } from './components/billing/BillingNotice.js';
+export type { BillingNoticeProps, BillingNoticeProps as BridgeBillingNoticeProps } from './components/billing/BillingNotice.js';
 export { QuotaBanner } from './components/billing/QuotaBanner.js';
 export { QuotaBanner as BridgeQuotaBanner } from './components/billing/QuotaBanner.js';
 export type { QuotaBannerProps } from './components/billing/QuotaBanner.js';
