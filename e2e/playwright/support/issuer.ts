@@ -28,6 +28,8 @@ export interface TestIssuer {
 	/** Flag results for signed-in people (on top of the standard flags) and for visitors. */
 	setFlags(signedIn: Record<string, unknown>, visitor?: Record<string, unknown>): Promise<void>;
 	setFacts(facts: Record<string, unknown>): Promise<void>;
+	/** What the quota read answers for a metric (`null`: no limit on it). The local issuer only. */
+	setQuota(metric: string, read: Record<string, unknown> | null): Promise<void>;
 	/** Ends every session of a person, as Bridge does after a password reset or a removal. */
 	endSessions(email: string): Promise<void>;
 }
@@ -71,6 +73,9 @@ class LocalIssuer implements TestIssuer {
 	async setFacts(facts: Record<string, unknown>) {
 		await this.call('/facts', facts);
 	}
+	async setQuota(metric: string, read: Record<string, unknown> | null) {
+		await this.call('/quota', { metric, read });
+	}
 	async endSessions(email: string) {
 		await this.call('/end-sessions', { email });
 	}
@@ -100,6 +105,9 @@ class RealIssuer implements TestIssuer {
 	}
 	async setFacts(): Promise<void> {
 		this.missing('set billing facts');
+	}
+	async setQuota(): Promise<void> {
+		this.missing('set a quota');
 	}
 	async endSessions(): Promise<void> {
 		this.missing('end sessions');
